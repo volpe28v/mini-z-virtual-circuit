@@ -1,6 +1,9 @@
 // 設定のスキーマ・既定値・検証・保存。DOM に依存しない (storage / env は引数で受ける)。
 
 export const STORAGE_KEY = 'mzvc.settings.v1';
+// 既定値を変えたときに上げる。旧バージョンで保存された「旧既定値のまま」の項目だけ新既定値へ移行する
+export const SETTINGS_VERSION = 2;
+const MIGRATIONS = [{ key: 'trackWidth', from: 90, since: 2 }]; // v2: コース幅 90 → 108mm (+20%)
 
 // rebuild: true の項目は、タイヤ痕などワールドの再生成が必要
 export const SCHEMA = [
@@ -8,7 +11,7 @@ export const SCHEMA = [
   { key: 'maxDrift', label: '最大ドリフト角度', unit: '°', min: 0, max: 60, step: 1, def: 35, rebuild: true },
   { key: 'driftStrength', label: 'ドリフト強度', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'courseScale', label: 'コーススケール', unit: '×', min: 0.5, max: 2, step: 0.01, def: 1 },
-  { key: 'trackWidth', label: 'コース幅', unit: 'mm', min: 60, max: 160, step: 1, def: 90, rebuild: true },
+  { key: 'trackWidth', label: 'コース幅', unit: 'mm', min: 60, max: 180, step: 1, def: 108, rebuild: true },
   { key: 'carX', label: '車両位置 X', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.5, percent: true },
   { key: 'carY', label: '車両位置 Y', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.6, percent: true },
   { key: 'brightness', label: '路面の明るさ', unit: '', min: 0.5, max: 1.5, step: 0.01, def: 1 },
@@ -20,6 +23,7 @@ export const SCHEMA = [
 
 export const BOOLEANS = [
   { key: 'showCar', label: '仮想車両を表示 (デバッグ)', def: false },
+  { key: 'autoRes', label: '重いときは解像度を自動で下げる', def: true },
   { key: 'playing', label: '再生', def: true },
 ];
 
@@ -34,7 +38,7 @@ export function guessPxPerMm(screenWidth, screenHeight) {
 }
 
 export function defaults(env = {}) {
-  const d = { pxPerMm: guessPxPerMm(env.screenWidth, env.screenHeight) };
+  const d = { version: SETTINGS_VERSION, pxPerMm: guessPxPerMm(env.screenWidth, env.screenHeight) };
   for (const s of SCHEMA) d[s.key] = s.def;
   for (const b of BOOLEANS) d[b.key] = b.def;
   return d;
@@ -55,6 +59,11 @@ export function sanitize(raw, env = {}) {
   }
   for (const b of BOOLEANS) {
     if (typeof raw[b.key] === 'boolean') out[b.key] = raw[b.key];
+  }
+  // 旧バージョンの保存値が旧既定値のままなら、新しい既定値を使う
+  const savedVersion = typeof raw.version === 'number' ? raw.version : 1;
+  for (const m of MIGRATIONS) {
+    if (savedVersion < m.since && raw[m.key] === m.from) out[m.key] = d[m.key];
   }
   const p = raw.pxPerMm;
   if (typeof p === 'number' && Number.isFinite(p)) {

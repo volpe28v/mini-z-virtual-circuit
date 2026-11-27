@@ -1,6 +1,6 @@
 // Service Worker: 初回読み込み後はオフラインでも動く。配置ディレクトリがスコープになる。
 // ファイル構成を変えたら ASSETS を更新し、CACHE のバージョンを上げる。
-const CACHE = 'mzvc-v1';
+const CACHE = 'mzvc-v2';
 const ASSETS = [
   './',
   'index.html',
@@ -44,7 +44,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   event.respondWith(
-    fetch(req)
+    // no-cache: ブラウザの HTTP キャッシュ (GitHub Pages は max-age=600) に頼らず、毎回サーバーに再検証する
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

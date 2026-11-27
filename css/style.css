@@ -65,9 +65,7 @@ button {
   border-radius: 24px;
   display: grid;
   place-items: center;
-  background: rgba(18, 20, 24, 0.55);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  background: rgba(18, 20, 24, 0.7);
   font-size: 20px;
 }
 #hud button:active {
@@ -108,9 +106,7 @@ body.ui-hidden #calibBar {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  background: rgba(14, 16, 20, 0.9);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: rgba(14, 16, 20, 0.95);
   z-index: 15;
   border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -249,9 +245,7 @@ body.ui-hidden #calibBar {
   align-items: center;
   padding: 1px 10px;
   border-radius: 16px;
-  background: rgba(14, 16, 20, 0.85);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background: rgba(14, 16, 20, 0.92);
   z-index: 12;
 }
 #calibBar .primary {

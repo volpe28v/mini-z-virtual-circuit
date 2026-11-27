@@ -67,16 +67,18 @@ function clamp255(v) {
   return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
-export function makeAsphalt(size = 512) {
+// 路面: 細かい粒 + 骨材 + 大きな色むらを 1 枚に焼き込む (毎フレームの塗りを 1 回にするため)
+export function makeAsphalt(size = 1024) {
   const rng = mulberry32(101);
   const fine = noiseField(size, size / 4, rng);
   const mid = noiseField(size, size / 16, rng);
+  const blotch = fbm(size, [[3, 1], [6, 0.8], [12, 0.6], [24, 0.4]], rng);
   const c = makeCanvas(size);
   const ctx = c.getContext('2d');
   const img = ctx.createImageData(size, size);
   const d = img.data;
   for (let i = 0; i < size * size; i++) {
-    let g = 58 + (fine[i] - 0.5) * 22 + (mid[i] - 0.5) * 14 + (rng() - 0.5) * 18;
+    let g = 58 + (fine[i] - 0.5) * 22 + (mid[i] - 0.5) * 14 + (rng() - 0.5) * 18 + blotch[i] * 13;
     const r = rng();
     if (r < 0.025) g += 25 + rng() * 40; // 明るい骨材
     else if (r < 0.04) g -= 18; // 暗い粒
@@ -89,31 +91,9 @@ export function makeAsphalt(size = 512) {
   return c;
 }
 
-// 大きな色むら (RGBA)。路面と芝の両方に重ねる
-export function makeMottle(size = 1024) {
-  const rng = mulberry32(202);
-  const n = fbm(size, [[4, 1], [8, 0.7], [16, 0.5], [32, 0.3]], rng);
-  const c = makeCanvas(size);
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  const d = img.data;
-  for (let i = 0; i < size * size; i++) {
-    const v = Math.max(-1, Math.min(1, n[i] * 2.4));
-    if (v > 0) {
-      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255;
-      d[i * 4 + 3] = v * 0.1 * 255;
-    } else {
-      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 0;
-      d[i * 4 + 3] = -v * 0.22 * 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
 export function makeGrass(size = 1024) {
   const rng = mulberry32(303);
-  const n = fbm(size, [[8, 1], [16, 0.8], [32, 0.6], [64, 0.4]], rng);
+  const n = fbm(size, [[4, 1.3], [8, 1], [16, 0.8], [32, 0.6], [64, 0.4]], rng);
   const n2 = fbm(size, [[16, 1], [48, 0.6]], rng);
   const c = makeCanvas(size);
   const ctx = c.getContext('2d');
@@ -195,32 +175,13 @@ export function makeGravel(size = 512) {
   return c;
 }
 
-// 汚れ・擦れ (RGBA の細かい斑点)。縁石などに重ねる
-export function makeSpeckle(size = 256) {
-  const rng = mulberry32(505);
-  const c = makeCanvas(size);
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  const d = img.data;
-  for (let i = 0; i < size * size; i++) {
-    const dark = rng() < 0.55;
-    const v = dark ? 0 : 255;
-    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v;
-    d[i * 4 + 3] = rng() * (dark ? 0.2 : 0.13) * 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
 // タイル 1 枚が覆うワールド上の長さ (mm)
-export const TILE_MM = { asphalt: 70, mottleA: 1400, mottleB: 850, grass: 220, gravel: 100, speckle: 40 };
+export const TILE_MM = { asphalt: 200, grass: 300, gravel: 100 };
 
 export function makeAllTextures() {
   return {
     asphalt: makeAsphalt(),
-    mottle: makeMottle(),
     grass: makeGrass(),
     gravel: makeGravel(),
-    speckle: makeSpeckle(),
   };
 }

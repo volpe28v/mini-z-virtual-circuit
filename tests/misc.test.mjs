@@ -29,6 +29,14 @@ test('設定: 不正値は範囲に収めるか既定に戻す', () => {
   assert.deepEqual(sanitize(null), defaults());
 });
 
+test('設定: コース幅の既定は 108mm (旧 90mm の +20%)。旧既定のまま保存された値は移行する', () => {
+  assert.equal(defaults().trackWidth, 108);
+  assert.equal(sanitize({ trackWidth: 90 }).trackWidth, 108); // 旧バージョン (version なし) で既定のまま
+  assert.equal(sanitize({ trackWidth: 100 }).trackWidth, 100); // 自分で変えた値は残す
+  assert.equal(sanitize({ version: 2, trackWidth: 90 }).trackWidth, 90); // 新バージョンで 90 を選んだ場合は残す
+  assert.equal(sanitize({ trackWidth: 999 }).trackWidth, 180);
+});
+
 test('設定: localStorage への保存と復元、壊れた JSON は既定値', () => {
   const store = new Map();
   const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };

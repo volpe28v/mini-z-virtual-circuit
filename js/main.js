@@ -41,17 +41,38 @@ function applyBrightness() {
   canvas.style.filter = settings.brightness === 1 ? '' : `brightness(${settings.brightness})`;
 }
 
+// 解像度の自動調整: フレームレートが落ちたら描画解像度を段階的に下げる (保存して次回も使う)
+const AUTO_KEY = 'mzvc.autoScale.v1';
+const AUTO_MIN = 0.5;
+let autoScale = 1;
+try {
+  const v = Number(storage && storage.getItem(AUTO_KEY));
+  if (v >= AUTO_MIN && v <= 1) autoScale = v;
+} catch {
+  /* 読めなくても既定 (1) で続ける */
+}
+function saveAutoScale() {
+  try {
+    if (storage) storage.setItem(AUTO_KEY, String(autoScale));
+  } catch {
+    /* 保存できなくても動作は続ける */
+  }
+}
+let autoHoldUntil = 0; // この時刻までは判定しない (起動直後・変更直後・復帰直後)
+
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  renderer.resize(w, h, window.devicePixelRatio || 1, settings.renderScale);
+  const scale = settings.renderScale * (settings.autoRes ? autoScale : 1);
+  renderer.resize(w, h, window.devicePixelRatio || 1, scale);
+  autoHoldUntil = performance.now() + 2000;
 }
 
 const ui = createUI(settings, {
   onChange(key) {
     if (REBUILD_KEYS.has(key)) scheduleRebuild();
     if (key === 'brightness') applyBrightness();
-    if (key === 'renderScale') resize();
+    if (key === 'renderScale' || key === 'autoRes') resize();
     if (key === 'playing') {
       if (settings.playing) acquireWakeLock();
       last = performance.now();
@@ -61,6 +82,8 @@ const ui = createUI(settings, {
   onReset() {
     const d = defaults(env);
     Object.assign(settings, d, { pxPerMm: settings.pxPerMm }); // 実寸の校正は残す
+    autoScale = 1;
+    saveAutoScale();
     applyBrightness();
     resize();
     scheduleRebuild();
@@ -124,9 +147,14 @@ function frame(now) {
     fps = (frames * 1000) / (now - fpsAt);
     frames = 0;
     fpsAt = now;
+    if (settings.autoRes && settings.playing && now > autoHoldUntil && fps < 50 && autoScale > AUTO_MIN) {
+      autoScale = Math.max(AUTO_MIN, Math.round(autoScale * 85) / 100);
+      saveAutoScale();
+      resize();
+    }
     const lap = Math.floor(vehicle.progress / track.length) + 1;
     ui.setStatus(
-      `${fps.toFixed(0)} fps · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm`,
+      `${fps.toFixed(0)} fps · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
     );
   }
 }
@@ -151,6 +179,7 @@ acquireWakeLock();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     last = performance.now();
+    autoHoldUntil = last + 2000;
     fpsAt = last;
     frames = 0;
     acquireWakeLock();

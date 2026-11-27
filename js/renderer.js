@@ -64,11 +64,8 @@ export class Renderer {
     };
     p = {
       asphalt: mk(this.tex.asphalt, TILE_MM.asphalt),
-      mottleA: mk(this.tex.mottle, TILE_MM.mottleA),
-      mottleB: mk(this.tex.mottle, TILE_MM.mottleB, 33),
       grass: mk(this.tex.grass, TILE_MM.grass),
       gravel: mk(this.tex.gravel, TILE_MM.gravel),
-      speckle: mk(this.tex.speckle, TILE_MM.speckle),
     };
     this.patCache.set(ctx, p);
     return p;
@@ -192,11 +189,7 @@ export class Renderer {
       runoffStrip(co, outside, co.a + 0.3 * L, co.b + 0.2 * L);
     }
 
-    const kerbAll = new Path2D();
-    kerbAll.addPath(red);
-    kerbAll.addPath(white);
-
-    this.world = { W, road, leftEdge, rightEdge, red, white, kerbAll, kerbOuter, kerbInner, runoff };
+    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff };
     this.buildMarks(st);
   }
 
@@ -245,10 +238,8 @@ export class Renderer {
     const gx = cam.px - r;
     const gy = cam.py - r;
 
-    // 芝 + 大きな色むら
+    // 芝 (大きな色むらはタイルに焼き込み済み)
     ctx.fillStyle = P.grass;
-    ctx.fillRect(gx, gy, 2 * r, 2 * r);
-    ctx.fillStyle = P.mottleB;
     ctx.fillRect(gx, gy, 2 * r, 2 * r);
 
     // ランオフ (砂利)
@@ -263,8 +254,6 @@ export class Renderer {
     ctx.fill(w.red);
     ctx.fillStyle = '#e9e6de';
     ctx.fill(w.white);
-    ctx.fillStyle = P.speckle;
-    ctx.fill(w.kerbAll);
     ctx.lineJoin = 'round';
     ctx.strokeStyle = 'rgba(0,0,0,0.38)';
     ctx.lineWidth = 2.6;
@@ -275,10 +264,6 @@ export class Renderer {
 
     // 路面
     ctx.fillStyle = P.asphalt;
-    ctx.fill(w.road, 'evenodd');
-    ctx.fillStyle = P.mottleA;
-    ctx.fill(w.road, 'evenodd');
-    ctx.fillStyle = P.mottleB;
     ctx.fill(w.road, 'evenodd');
 
     // ラバーライン (走行ラインの黒ずみ) とタイヤ痕
