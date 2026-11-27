@@ -6,6 +6,7 @@ const FIXED_STEP = 1 / 120;
 const LOOKAHEAD_S = 0.16; // ドリフト開始を先読みする時間
 const K_LOW = 1 / 1200; // これより緩いコーナーではドリフトしない
 const K_HIGH = 1 / 250; // これより急なコーナーでは最大角
+const CARRY_TAU = 0.45; // 引きずりでグリップが戻る時間定数 (秒。設定 1 のとき)
 const FEINT_LOOK_S = 0.8; // フェイントのためにコーナーを先読みする時間
 const FEINT_ANGLE = 0.7; // フェイントの振り出し角 (最大ドリフト角に対する比。設定 1 のとき)
 
@@ -30,6 +31,7 @@ export class Vehicle {
     this.offsetBias = 0; // 横位置のずれ (mm)
     this.lapVariation = false; // true なら、周回ごとにドリフト角 (±10%) と横位置 (±7mm) をわずかに変える
     this._lap = -1;
+    this._hold = 0; // 引きずり込みの目標角 (rad)
     this._feintW = 0; // いまのフェイントの強さ 0〜1 (テスト・表示用)
     this._feintDir = 0;
     this.pos = { x: 0, y: 0 };
@@ -49,6 +51,7 @@ export class Vehicle {
     this.travelDirection = 0;
     this.speed = 0;
     this._first = true;
+    this._hold = 0;
     this._lap = -1;
     this._compose(0);
   }
@@ -104,6 +107,22 @@ export class Vehicle {
     const amp = Math.min(1, strength) * (0.65 + 0.35 * u);
     let target = Math.sign(kLook) * gLook * maxD * amp * this.driftScale;
 
+    // 引きずり: コーナーを抜けても角度は急には戻らず、直線に入ってもしばらく滑り続けて、ゆっくりグリップが戻る。
+    // 逆向きの新しいコーナーが来たら (2° 超) すぐ追従する
+    const carry = Math.min(2, Math.max(0, st.carry ?? 0));
+    if (carry > 0) {
+      const flip = target * this._hold < 0 && Math.abs(target) > 2 * DEG;
+      if (flip || Math.abs(target) >= Math.abs(this._hold)) {
+        this._hold = target;
+      } else {
+        const tau = CARRY_TAU * carry;
+        this._hold += (target - this._hold) * (1 - Math.exp(-dt / tau));
+      }
+      target = this._hold;
+    } else {
+      this._hold = target;
+    }
+
     // フェイント (D1 のフリック): 直線の終わりで、先にコーナーと逆へ車体を振り、反動でコーナーへ切り込む。
     // 遠くのコーナーが急で、手前 (いま・先読み位置) がまだ直線のときだけ働く
     const feint = Math.min(2, Math.max(0, st.feint ?? 0));
@@ -132,7 +151,7 @@ export class Vehicle {
 
     // 横オフセット: ドリフト中にコーナーの外側へ膨らむ
     const oTarget =
-      -Math.sign(k0) * g0 * 0.14 * st.trackWidth * Math.min(1, strength) +
+      -Math.sign(this._hold) * Math.min(1, Math.abs(this._hold) / Math.max(1e-6, maxD * 0.8)) * 0.14 * st.trackWidth * Math.min(1, strength) +
       // フェイント中は、車体を振った側 (コーナーの外側) へ少し寄る
       -(this._feintDir || 0) * this._feintW * 0.06 * st.trackWidth * Math.min(1, feint) +
       this.offsetBias;

@@ -176,10 +176,11 @@ test('周ごとの変化 (lapVariation): 周ごとに軌跡がずれ、痕が 1 
   };
   const still = run(false);
   const varied = run(true);
-  const a0 = lateralAt(still.sk, 0)[0];
-  const a1 = lateralAt(still.sk, 1)[0];
-  const b0 = lateralAt(varied.sk, 0)[0];
-  const b1 = lateralAt(varied.sk, 1)[0];
+  // 1 周目は発進直後の過渡 (引きずりの余韻が無い) を含むので、定常の 2 周目と 3 周目を比べる
+  const a0 = lateralAt(still.sk, 1)[0];
+  const a1 = lateralAt(still.sk, 2)[0];
+  const b0 = lateralAt(varied.sk, 1)[0];
+  const b1 = lateralAt(varied.sk, 2)[0];
   assert.ok(a0 && a1 && b0 && b1);
   assert.ok(Math.hypot(a0[0] - a1[0], a0[1] - a1[1]) < 1.5, '変化なしなら周ごとに同じ位置');
   assert.ok(Math.hypot(b0[0] - b1[0], b0[1] - b1[1]) > 1.5, '変化ありなら周ごとにずれる');

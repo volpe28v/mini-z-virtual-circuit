@@ -195,3 +195,47 @@ test('フェイントでも角度の上限と滑らかさを守る', () => {
   assert.ok(maxAbs <= s.maxDrift * 1.12 * 1.1 + 0.01, `maxAbs=${maxAbs}`);
   assert.ok(maxStep < 3.5, `maxStep=${maxStep}`);
 });
+
+test('引きずり: コーナーを抜けた直線でも角度がしばらく残り、ゆっくり戻る', () => {
+  // コーナー出口から 250mm 走った時点の、同じ向きの角度の平均 (全コーナー)
+  const exitAngle = (carry) => {
+    const s = { ...defaults(), carry, feint: 0 };
+    const v = new Vehicle(track);
+    v.reset(0);
+    let peak = 0;
+    let since = -1;
+    const samples = [];
+    while (v.progress < 2 * track.length) {
+      v.update(1 / 120, s);
+      const k = Math.abs(track.kappaAt(v.progress));
+      if (k > 1 / 300) {
+        peak = Math.abs(v.driftAngle);
+        since = v.progress;
+      } else if (since >= 0 && peak > 20 / DEG && v.progress - since > 250) {
+        samples.push((Math.abs(v.driftAngle) * Math.sign(track.kappaAt(since))) / peak);
+        since = -1;
+      }
+    }
+    return samples.reduce((a, b) => a + Math.abs(b), 0) / Math.max(1, samples.length);
+  };
+  const off = exitAngle(0);
+  const on = exitAngle(1);
+  assert.ok(on > off + 0.1, `引きずりあり ${on.toFixed(2)} > なし ${off.toFixed(2)}`);
+});
+
+test('引きずり: 逆向きの次のコーナーにはすぐ切り替わり、角度の上限も守る', () => {
+  const s = { ...defaults(), carry: 2, feint: 1 };
+  const v = new Vehicle(track);
+  v.reset(0);
+  let maxAbs = 0;
+  let maxStep = 0;
+  let prev = v.heading;
+  while (v.progress < 3 * track.length) {
+    v.update(1 / 60, s);
+    maxAbs = Math.max(maxAbs, Math.abs(v.driftAngle) * DEG);
+    maxStep = Math.max(maxStep, Math.abs(wrapAngle(v.heading - prev)) * DEG);
+    prev = v.heading;
+  }
+  assert.ok(maxAbs <= s.maxDrift * 1.12 * 1.1 + 0.01, `maxAbs=${maxAbs}`);
+  assert.ok(maxStep < 3.5, `maxStep=${maxStep}`);
+});
