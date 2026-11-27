@@ -392,7 +392,8 @@ export class Renderer {
 
     this._drawFinishLine(ctx, w.W);
     if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
-    if (wet > 0.45 && !this._overview) this._drawRain(ctx, cam, r, wet);
+    const rain = Math.min(1, Math.max(0, st.rain ?? st.wet ?? 0));
+    if (rain > 0.2 && !this._overview) this._drawRain(ctx, cam, r, rain);
   }
 
   // 雨粒が路面に当たってできる波紋。路面 (ワールド座標) に固定されていて、路面と一緒に流れる。
@@ -409,7 +410,7 @@ export class Renderer {
     const x1 = Math.floor((cam.px + viewR) / C);
     const y0 = Math.floor((cam.py - viewR) / C);
     const y1 = Math.floor((cam.py + viewR) / C);
-    const density = Math.min(1, 0.9 * wet);
+    const density = Math.min(1, 0.9 * wet); // wet は降り方 (rain)
     for (let gy = y0; gy <= y1; gy++) {
       for (let gx = x0; gx <= x1; gx++) {
         if (hash(gx, gy, 1) > density) continue; // 雨が弱いと、落ちる格子が少ない

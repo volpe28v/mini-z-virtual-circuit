@@ -5,6 +5,7 @@ import { Vehicle } from './vehicle.js';
 import { makeAllTextures } from './textures.js';
 import { Renderer } from './renderer.js';
 import { SmokeSystem } from './smoke.js';
+import { Weather } from './weather.js';
 import { SkidMarks } from './skids.js';
 import { createUI } from './ui.js';
 
@@ -28,6 +29,11 @@ const textures = makeAllTextures();
 const renderer = new Renderer(canvas, track, textures);
 const smoke = new SmokeSystem();
 renderer.smoke = smoke;
+// 実行時の設定: 保存する設定 (settings) に、いまの天候 (wet・rain) だけを重ねたもの。保存の対象にはしない
+const weather = new Weather();
+const live = Object.create(settings);
+live.wet = settings.wet;
+live.rain = settings.wet;
 const skids = new SkidMarks(track.length);
 renderer.skids = skids;
 
@@ -128,9 +134,17 @@ function frame(now) {
   last = now;
   if (!(dt > 0)) dt = 0;
   if (dt > 0.05) dt = 0.05; // タブ切り替え後などの大きな飛びを防ぐ
+  if (settings.autoWeather) {
+    if (settings.playing) weather.update(dt);
+    live.wet = weather.wet;
+    live.rain = weather.rain;
+  } else {
+    live.wet = settings.wet;
+    live.rain = settings.wet;
+  }
   if (settings.playing) {
-    vehicle.update(dt, settings, (v) => skids.update(v, settings)); // タイヤ痕は固定ステップごとに記録
-    smoke.update(dt, vehicle, settings);
+    vehicle.update(dt, live, (v) => skids.update(v, live)); // タイヤ痕は固定ステップごとに記録
+    smoke.update(dt, vehicle, live);
   }
 
   const w = window.innerWidth;
@@ -151,7 +165,7 @@ function frame(now) {
     cam.ax = w * settings.carX;
     cam.ay = h * settings.carY;
   }
-  renderer.render(cam, settings, vehicle, overview);
+  renderer.render(cam, live, vehicle, overview);
 
   frames++;
   if (now - fpsAt >= 1000) {
@@ -165,7 +179,7 @@ function frame(now) {
     }
     const lap = Math.floor(vehicle.progress / track.length) + 1;
     ui.setStatus(
-      `${fps.toFixed(0)} fps · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
+      `${fps.toFixed(0)} fps · ${settings.autoWeather ? weather.label : '天候手動'} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
     );
   }
 }
@@ -215,4 +229,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // テスト用に公開 (Playwright から状態を確認する)
-window.__mzvc = { settings, vehicle, track, renderer, smoke, skids, sanitize };
+window.__mzvc = { weather, live, settings, vehicle, track, renderer, smoke, skids, sanitize };
