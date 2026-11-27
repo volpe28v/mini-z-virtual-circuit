@@ -6,6 +6,7 @@ import { makeAllTextures } from './textures.js';
 import { Renderer } from './renderer.js';
 import { SmokeSystem } from './smoke.js';
 import { Weather } from './weather.js';
+import { TimeOfDay } from './daylight.js';
 import { SkidMarks } from './skids.js';
 import { createUI } from './ui.js';
 
@@ -31,7 +32,10 @@ const smoke = new SmokeSystem();
 renderer.smoke = smoke;
 // 実行時の設定: 保存する設定 (settings) に、いまの天候 (wet・rain) だけを重ねたもの。保存の対象にはしない
 const weather = new Weather();
+const timeOfDay = new TimeOfDay();
 const live = Object.create(settings);
+live.dark = 0;
+live.warm = 0;
 live.wet = settings.wet;
 live.rain = settings.wet;
 const skids = new SkidMarks(track.length);
@@ -134,6 +138,14 @@ function frame(now) {
   last = now;
   if (!(dt > 0)) dt = 0;
   if (dt > 0.05) dt = 0.05; // タブ切り替え後などの大きな飛びを防ぐ
+  if (settings.autoTime) {
+    if (settings.playing) timeOfDay.update(dt);
+    live.dark = timeOfDay.dark;
+    live.warm = timeOfDay.warm;
+  } else {
+    live.dark = settings.night;
+    live.warm = 0;
+  }
   if (settings.autoWeather) {
     if (settings.playing) weather.update(dt);
     live.wet = weather.wet;
@@ -179,7 +191,7 @@ function frame(now) {
     }
     const lap = Math.floor(vehicle.progress / track.length) + 1;
     ui.setStatus(
-      `${fps.toFixed(0)} fps · ${settings.autoWeather ? weather.label : '天候手動'} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
+      `${fps.toFixed(0)} fps · ${settings.autoTime ? timeOfDay.label : '時間帯手動'} · ${settings.autoWeather ? weather.label : '天候手動'} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
     );
   }
 }
@@ -229,4 +241,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // テスト用に公開 (Playwright から状態を確認する)
-window.__mzvc = { weather, live, settings, vehicle, track, renderer, smoke, skids, sanitize };
+window.__mzvc = { timeOfDay, weather, live, settings, vehicle, track, renderer, smoke, skids, sanitize };

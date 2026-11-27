@@ -40,6 +40,7 @@ export class Renderer {
     this._skidVersion = -1;
     this.smokeSprite = this._makeSmokeSprite();
     this.spraySprite = this._makeSmokeSprite([214, 228, 244]); // 雨の水煙 (青みがかった白)
+    this.glowSprite = this._makeGlowSprite();
     this._t0 = 0;
   }
 
@@ -53,6 +54,21 @@ export class Renderer {
     grad.addColorStop(0, `rgba(${R + 6},${G + 6},${B + 6},1)`);
     grad.addColorStop(0.35, `rgba(${R},${G},${B},0.6)`);
     grad.addColorStop(1, `rgba(${R - 8},${G - 8},${B - 8},0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    return c;
+  }
+
+  // 街灯の光だまり (暖色の円形グラデーション。加算で重ねる)
+  _makeGlowSprite() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,238,200,1)');
+    grad.addColorStop(0.12, 'rgba(255,222,160,0.8)');
+    grad.addColorStop(0.45, 'rgba(255,196,120,0.28)');
+    grad.addColorStop(1, 'rgba(255,180,100,0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
     return c;
@@ -215,8 +231,22 @@ export class Renderer {
     }
 
     const puddles = this._buildPuddles(half);
-    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles };
+    const lamps = this._buildLamps(half);
+    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps };
     this.buildMarks(st);
+  }
+
+  // 街灯: コースの外側に、左右交互に一定間隔で置く (夜の光だまり用)。[x0, y0, x1, y1, ...]
+  _buildLamps(half) {
+    const t = this.track;
+    const out = [];
+    const step = Math.round(520 / t.ds);
+    for (let i = 0, n = 0; i < t.N; i += step, n++) {
+      const side = n & 1 ? 1 : -1;
+      const d = side * (half + KERB_W + 22);
+      out.push(t.x[i] + this.nx[i] * d, t.y[i] + this.ny[i] * d);
+    }
+    return out;
   }
 
   // 水たまり: 路面に固定した楕円 (走行方向に細長い)。固定の種で作るので毎回同じ場所
@@ -392,8 +422,74 @@ export class Renderer {
 
     this._drawFinishLine(ctx, w.W);
     if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
+    if (!this._overview) this._drawLighting(ctx, cam, st, w, r, m, wet);
     const rain = Math.min(1, Math.max(0, st.rain ?? st.wet ?? 0));
     if (rain > 0.2 && !this._overview) this._drawRain(ctx, cam, r, rain);
+  }
+
+  // 夕方・夜: 全体を暗く色づけ (ヘッドライトの届く範囲だけ明るく残す)、街灯の光だまり、濡れた路面への反射
+  _drawLighting(ctx, cam, st, w, viewR, m, wet) {
+    const dark = Math.min(1, Math.max(0, st.dark || 0));
+    const warm = Math.min(1, Math.max(0, st.warm || 0));
+    if (dark < 0.01 && warm < 0.01) return;
+    const k = cam.k * this.pr;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const on = Math.min(1, Math.max(0, (dark - 0.3) / 0.5)); // ヘッドライトの点き具合
+
+    // 色: 夜は暗い青、夕焼け・朝焼けは赤みを混ぜる。暗さ (alpha) と色味は 1 回の塗りにまとめる
+    const wm = warm / (warm + dark * 0.8 + 1e-6);
+    const col = [8 + 142 * wm, 14 + 50 * wm, 36 - 6 * wm].map((v) => Math.round(v));
+    const a = Math.min(0.88, 0.86 * dark + 0.18 * warm);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // 光の中心: 車の前方 (画面の上) 約 120mm
+    const cx = cam.ax * this.pr;
+    const cy = cam.ay * this.pr - 120 * k;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 200 * k);
+    const aIn = a * (1 - 0.7 * on);
+    g.addColorStop(0, `rgba(${col},${aIn.toFixed(3)})`);
+    g.addColorStop(1, `rgba(${col},${a.toFixed(3)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.globalCompositeOperation = 'lighter';
+    // ヘッドライトの光 (暖色) と、濡れた路面への縦長の反射
+    if (on > 0.01) {
+      const bx = cam.ax * this.pr;
+      const by = cam.ay * this.pr - 110 * k;
+      const rr = 170 * k;
+      const hg = ctx.createRadialGradient(bx, by, 0, bx, by, rr);
+      hg.addColorStop(0, `rgba(255,238,200,${(0.22 * on).toFixed(3)})`);
+      hg.addColorStop(1, 'rgba(255,238,200,0)');
+      ctx.fillStyle = hg;
+      ctx.fillRect(bx - rr, by - rr, 2 * rr, 2 * rr);
+      if (wet > 0.05) {
+        ctx.save();
+        ctx.translate(bx, by);
+        ctx.scale(0.28, 1);
+        const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, rr * 1.1);
+        sg.addColorStop(0, `rgba(210,230,255,${(0.34 * on * wet).toFixed(3)})`);
+        sg.addColorStop(1, 'rgba(210,230,255,0)');
+        ctx.fillStyle = sg;
+        ctx.fillRect(-rr * 1.2, -rr * 1.2, rr * 2.4, rr * 2.4);
+        ctx.restore();
+      }
+    }
+    // 街灯の光だまり (路面に固定、路面と一緒に流れる)。濡れていると強く反射する
+    const lampA = Math.min(1, dark * 1.3) * (0.55 + 0.45 * wet);
+    if (lampA > 0.02) {
+      ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      ctx.globalAlpha = lampA;
+      const R = 80 * (1 + 0.25 * wet);
+      const L = w.lamps;
+      for (let i = 0; i < L.length; i += 2) {
+        if (Math.abs(L[i] - cam.px) > viewR + R || Math.abs(L[i + 1] - cam.py) > viewR + R) continue;
+        ctx.drawImage(this.glowSprite, L[i] - R, L[i + 1] - R, 2 * R, 2 * R);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
   }
 
   // 雨粒が路面に当たってできる波紋。路面 (ワールド座標) に固定されていて、路面と一緒に流れる。
