@@ -4,7 +4,7 @@ import { Track } from '../js/track.js';
 import { Vehicle } from '../js/vehicle.js';
 import { defaults } from '../js/settings.js';
 import { carGeometry } from '../js/camera.js';
-import { SmokeSystem, MAX_PARTICLES, smokeSize, smokeAlpha } from '../js/smoke.js';
+import { SmokeSystem, MAX_PARTICLES, MAX_AMOUNT, smokeSize, smokeAlpha } from '../js/smoke.js';
 
 const track = new Track();
 const DEG = Math.PI / 180;
@@ -177,4 +177,28 @@ test('同じ種 (seed) なら同じ煙 (再現性)', () => {
     return Array.from(s.x.slice(0, 20));
   };
   assert.deepEqual(run(), run());
+});
+
+test('量を上げるほど増える (上限 3 まで)。粒数と不透明度は上限内', () => {
+  const run = (amount) => {
+    const s = new SmokeSystem();
+    let peak = 0;
+    let maxA = 0;
+    for (let i = 0; i < 600; i++) {
+      s.update(1 / 60, fakeVeh(35), { ...defaults(), smoke: amount });
+      peak = Math.max(peak, s.count);
+      for (let k = 0; k < s.cap; k++) if (s.alive(k)) maxA = Math.max(maxA, s.a0[k]);
+    }
+    return { peak, maxA };
+  };
+  const r1 = run(1);
+  const r15 = run(1.5);
+  const r3 = run(3);
+  assert.ok(r15.peak > r1.peak, `${r15.peak} ${r1.peak}`);
+  assert.ok(r3.peak > r15.peak * 1.3, `量 3 は 1.5 よりはっきり多い: ${r3.peak} ${r15.peak}`);
+  assert.ok(r3.peak <= MAX_PARTICLES);
+  assert.ok(r3.maxA <= 0.85 + 1e-6 && r3.maxA >= r15.maxA); // 最深のドリフトでは 1.5 の時点で上限 (0.85) に達する
+  // 上限を超える値を入れても、上限 (3) と同じ
+  assert.equal(run(5).peak, r3.peak);
+  assert.equal(MAX_AMOUNT, 3);
 });

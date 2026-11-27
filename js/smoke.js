@@ -2,7 +2,9 @@
 // 粒はワールド座標に固定され、車が進むと路面の上に尾を引いて残る。リングバッファで固定長 (毎フレームの確保なし)。
 import { carGeometry } from './camera.js';
 
-export const MAX_PARTICLES = 160;
+export const MAX_PARTICLES = 300;
+export const MAX_AMOUNT = 3; // 設定「タイヤスモーク」の上限
+const MAX_ALPHA = 0.85; // 1 粒の不透明度の上限 (重なりで濃くなる)
 const DEG = 180 / Math.PI;
 const CARRY = 0.75; // 発生時に車の速度のうちどれだけを引き継ぐか
 const DRAG = 1.2; // 空気抵抗 (1/s)
@@ -88,7 +90,7 @@ export class SmokeSystem {
     const depth = clamp((beta - thr) / Math.max(1, st.maxDrift - thr), 0, 1);
     const speedF = 0.6 + 0.4 * clamp(veh.speed / Math.max(1, st.speed * 0.6), 0, 1);
     const i = depth * speedF;
-    const rate = Math.min(1.5, amount) * (10 + 30 * i); // 1 輪あたりの粒数/秒
+    const rate = Math.min(MAX_AMOUNT, amount) * (10 + 30 * i); // 1 輪あたりの粒数/秒
 
     const g = carGeometry(st.carLength, st.carWidth);
     const h = veh.heading;
@@ -124,7 +126,7 @@ export class SmokeSystem {
     this.life[k] = 0.9 + rnd() * 0.7 + 0.3 * i;
     this.r0[k] = 5 + rnd() * 3;
     this.r1[k] = 17 + rnd() * 8 + 10 * i;
-    this.a0[k] = (0.3 + 0.3 * i) * Math.min(1.5, amount);
+    this.a0[k] = Math.min(MAX_ALPHA, (0.3 + 0.3 * i) * Math.min(MAX_AMOUNT, amount));
   }
 }
 

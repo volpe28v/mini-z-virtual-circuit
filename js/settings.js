@@ -16,7 +16,7 @@ export const SCHEMA = [
   { key: 'carX', label: '車両位置 X', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.5, percent: true },
   { key: 'carY', label: '車両位置 Y', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.6, percent: true },
   { key: 'brightness', label: '路面の明るさ', unit: '', min: 0.5, max: 1.5, step: 0.01, def: 1 },
-  { key: 'smoke', label: 'タイヤスモーク', unit: '', min: 0, max: 2, step: 0.05, def: 1 },
+  { key: 'smoke', label: 'タイヤスモーク', unit: '', min: 0, max: 3, step: 0.05, def: 1 },
   { key: 'motionBlur', label: 'モーションブラー', unit: '', min: 0, max: 0.6, step: 0.05, def: 0.2 },
   { key: 'carLength', label: '車両の長さ (表示用)', unit: 'mm', min: 100, max: 220, step: 1, def: 150 },
   { key: 'carWidth', label: '車両の幅 (表示用)', unit: 'mm', min: 50, max: 100, step: 1, def: 70 },
