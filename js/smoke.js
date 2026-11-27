@@ -47,6 +47,7 @@ export class SmokeSystem {
     this.flow = [1, 1]; // 左右の後輪ごとの出方のむら (平均 1)
     this.flowTarget = [1, 1];
     this.flowTimer = 0;
+    this.wet = 0;
     this.puff = 0; // 一気に濃く出るふかし (0〜1)
     this.rng = mulberry32(seed);
   }
@@ -87,6 +88,7 @@ export class SmokeSystem {
     }
 
     const amount = st.smoke;
+    this.wet = st.wet ?? 0;
     if (!(amount > 0) || !(st.maxDrift > 0)) {
       this.acc[0] = this.acc[1] = 0;
       this.driftTime = 0;
@@ -159,10 +161,11 @@ export class SmokeSystem {
     this.vx[k] = veh.velocity.x * CARRY + rx * side * out + (rnd() - 0.5) * 14;
     this.vy[k] = veh.velocity.y * CARRY + ry * side * out + (rnd() - 0.5) * 14;
     this.age[k] = 0;
-    this.life[k] = (0.9 + rnd() * 0.9 + 0.3 * i) * (0.85 + 0.15 * (this.durF || 1));
+    const wet = Math.min(1, Math.max(0, this.wet || 0)); // 雨: 煙より低く速く広がる水煙。短命
+    this.life[k] = (0.9 + rnd() * 0.9 + 0.3 * i) * (0.85 + 0.15 * (this.durF || 1)) * (1 - 0.4 * wet);
     this.r0[k] = 5 + rnd() * 3;
-    this.r1[k] = (17 + rnd() * 14 + 10 * i) * (0.9 + 0.2 * (this.durF || 1));
-    this.a0[k] = Math.min(MAX_ALPHA, (0.3 + 0.3 * i) * (0.8 + 0.4 * rnd()) * Math.min(MAX_AMOUNT, amount));
+    this.r1[k] = (17 + rnd() * 14 + 10 * i) * (0.9 + 0.2 * (this.durF || 1)) * (1 + 0.3 * wet);
+    this.a0[k] = Math.min(MAX_ALPHA, (0.3 + 0.3 * i) * (0.8 + 0.4 * rnd()) * Math.min(MAX_AMOUNT, amount) * (1 - 0.2 * wet));
   }
 }
 

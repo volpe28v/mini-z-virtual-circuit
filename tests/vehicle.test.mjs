@@ -276,3 +276,33 @@ test('ライン取りのふらつき: 左右に動き、周ごとに違い、道
   const wide = measure(2, 1);
   assert.ok(wide.mx < defaults().trackWidth / 2 - 15, `はみ出し ${wide.mx}`);
 });
+
+test('ウェット路面: グリップが低く、角度が深く長く滑る。0 ならドライと同じ。上限は守る', () => {
+  const peakAndExit = (wet) => {
+    const s = { ...defaults(), wet, wander: 0, feint: 0 };
+    const v = new Vehicle(track);
+    v.reset(0);
+    let peak = 0;
+    let exit = 0;
+    let n = 0;
+    let since = -1;
+    while (v.progress < 2 * track.length) {
+      v.update(1 / 120, s);
+      peak = Math.max(peak, Math.abs(v.driftAngle));
+      const k = Math.abs(track.kappaAt(v.progress));
+      if (k > 1 / 300) since = v.progress;
+      else if (since >= 0 && v.progress - since > 300) {
+        exit += Math.abs(v.driftAngle);
+        n++;
+        since = -1;
+      }
+    }
+    return { peak: peak * DEG, exit: exit / Math.max(1, n) };
+  };
+  const dry = peakAndExit(0);
+  const wet = peakAndExit(1);
+  assert.ok(wet.peak > dry.peak, `${wet.peak} > ${dry.peak}`);
+  assert.ok(wet.exit > dry.exit, '出口でも長く滑る');
+  assert.ok(wet.peak <= defaults().maxDrift * 1.12 * 1.1 * 1.15 + 0.01);
+  assert.equal(peakAndExit(0).peak, dry.peak);
+});

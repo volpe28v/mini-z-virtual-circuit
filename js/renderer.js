@@ -39,17 +39,20 @@ export class Renderer {
     this._skidPath = null;
     this._skidVersion = -1;
     this.smokeSprite = this._makeSmokeSprite();
+    this.spraySprite = this._makeSmokeSprite([214, 228, 244]); // 雨の水煙 (青みがかった白)
+    this._t0 = 0;
   }
 
   // 煙 1 粒ぶんの、ふわっとした円形のスプライト (1 枚を拡大縮小して使い回す)
-  _makeSmokeSprite() {
+  _makeSmokeSprite(rgb = [240, 240, 240]) {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const g = c.getContext('2d');
     const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(246,246,246,1)');
-    grad.addColorStop(0.35, 'rgba(238,238,238,0.6)');
-    grad.addColorStop(1, 'rgba(232,232,232,0)');
+    const [R, G, B] = rgb;
+    grad.addColorStop(0, `rgba(${R + 6},${G + 6},${B + 6},1)`);
+    grad.addColorStop(0.35, `rgba(${R},${G},${B},0.6)`);
+    grad.addColorStop(1, `rgba(${R - 8},${G - 8},${B - 8},0)`);
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
     return c;
@@ -211,8 +214,37 @@ export class Renderer {
       runoffStrip(co, outside, co.a + 0.3 * L, co.b + 0.2 * L);
     }
 
-    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff };
+    const puddles = this._buildPuddles(half);
+    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles };
     this.buildMarks(st);
+  }
+
+  // 水たまり: 路面に固定した楕円 (走行方向に細長い)。固定の種で作るので毎回同じ場所
+  _buildPuddles(half) {
+    const t = this.track;
+    const body = new Path2D();
+    const shine = new Path2D();
+    let a = 20260101;
+    const rnd = () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+    const count = Math.round(t.length / 95);
+    for (let n = 0; n < count; n++) {
+      const i = Math.floor(rnd() * t.N);
+      const d = (rnd() - 0.5) * 2 * half * 0.8;
+      const x = t.x[i] + this.nx[i] * d;
+      const y = t.y[i] + this.ny[i] * d;
+      const rx = 10 + rnd() * 26; // 走行方向
+      const ry = 4 + rnd() * 9;
+      body.moveTo(x + rx * Math.cos(t.theta[i]), y + rx * Math.sin(t.theta[i]));
+      body.ellipse(x, y, rx, ry, t.theta[i], 0, Math.PI * 2);
+      shine.moveTo(x - rx * 0.2 + rx * 0.5, y);
+      shine.ellipse(x - rx * 0.15 * Math.cos(t.theta[i]), y - rx * 0.15 * Math.sin(t.theta[i]) - ry * 0.25, rx * 0.5, ry * 0.3, t.theta[i], 0, Math.PI * 2);
+    }
+    return { body, shine };
   }
 
   // ラバーライン (走行ラインの黒ずみ)。設定が変わったときに作り直す
@@ -280,6 +312,7 @@ export class Renderer {
     ctx.lineWidth = 1.2;
     ctx.stroke(w.runoff);
 
+    const wet = Math.min(1, Math.max(0, st.wet || 0));
     // 縁石 (赤白) + 汚れ + 立体感の線
     ctx.fillStyle = '#c4272c';
     ctx.fill(w.red);
@@ -293,9 +326,29 @@ export class Renderer {
     ctx.lineWidth = 1.1;
     ctx.stroke(w.kerbInner);
 
+    // 雨: 芝・砂利・縁石をまとめて少し暗く
+    if (wet > 0.01) {
+      ctx.fillStyle = `rgba(4,12,22,${(0.2 * wet).toFixed(3)})`;
+      ctx.fillRect(gx, gy, 2 * r, 2 * r);
+    }
+
     // 路面
     ctx.fillStyle = P.asphalt;
     ctx.fill(w.road, 'evenodd');
+    if (wet > 0.01) {
+      // 濡れたアスファルトは暗く青みがかり、水たまりが光る
+      ctx.fillStyle = `rgba(8,16,30,${(0.45 * wet).toFixed(3)})`;
+      ctx.fill(w.road, 'evenodd');
+      const pu = Math.min(1, Math.max(0, (wet - 0.2) / 0.5));
+      if (pu > 0) {
+        ctx.globalAlpha = pu;
+        ctx.fillStyle = 'rgba(70,92,120,0.38)';
+        ctx.fill(w.puddles.body);
+        ctx.fillStyle = 'rgba(210,225,245,0.26)';
+        ctx.fill(w.puddles.shine);
+        ctx.globalAlpha = 1;
+      }
+    }
 
     // ラバーライン (走行ラインの黒ずみ) とタイヤ痕
     ctx.lineCap = 'round';
@@ -305,8 +358,15 @@ export class Renderer {
     ctx.stroke(this.marks.rubber);
     ctx.lineWidth = Math.min(26, w.W * 0.28);
     ctx.stroke(this.marks.rubber);
+    if (wet > 0.01) {
+      // 濡れた走行ラインは、ゴムが水を弾いてうっすら光る
+      ctx.strokeStyle = `rgba(170,190,215,${(0.06 * wet).toFixed(3)})`;
+      ctx.lineWidth = Math.min(18, w.W * 0.18);
+      ctx.stroke(this.marks.rubber);
+    }
     if (this.skids && !this._overview) {
-      const alphas = [0.09, 0.15, 0.24];
+      const f = 1 - 0.6 * wet; // 濡れた路面では痕が薄い
+      const alphas = [0.09 * f, 0.15 * f, 0.24 * f];
       const done = this._skidPaths();
       ctx.lineWidth = 4.5;
       for (let b = 0; b < 3; b++) {
@@ -331,12 +391,42 @@ export class Renderer {
     ctx.stroke(w.rightEdge);
 
     this._drawFinishLine(ctx, w.W);
-    if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r);
+    if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
+    if (wet > 0.45 && !this._overview) this._drawRain(ctx, wet);
   }
 
-  _drawSmoke(ctx, cam, viewR) {
+  // 雨粒が路面に当たってできる波紋 (画面に固定、時間で変わる)。粒数は雨の強さに比例
+  _drawRain(ctx, wet) {
+    const n = Math.round(90 * wet);
+    const t = performance.now() / 1000;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const groups = [new Path2D(), new Path2D(), new Path2D()];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (let i = 0; i < n; i++) {
+      const ph = t * 1.8 + i * 0.6180339;
+      const cyc = Math.floor(ph);
+      const f = ph - cyc;
+      const h1 = Math.sin((i + 1) * 12.9898 + cyc * 78.233) * 43758.5453;
+      const h2 = Math.sin((i + 1) * 39.346 + cyc * 11.135) * 24634.6345;
+      const x = (h1 - Math.floor(h1)) * W;
+      const y = (h2 - Math.floor(h2)) * H;
+      const rad = (2 + 16 * f) * this.pr;
+      const p = groups[Math.min(2, Math.floor(f * 3))];
+      p.moveTo(x + rad, y);
+      p.arc(x, y, rad, 0, Math.PI * 2);
+    }
+    ctx.lineWidth = Math.max(1, this.pr);
+    const al = [0.3, 0.18, 0.08];
+    for (let g = 0; g < 3; g++) {
+      ctx.strokeStyle = `rgba(215,228,245,${al[g]})`;
+      ctx.stroke(groups[g]);
+    }
+  }
+
+  _drawSmoke(ctx, cam, viewR, wet = 0) {
     const S = this.smoke;
-    const sprite = this.smokeSprite;
+    const sprite = wet > 0.3 ? this.spraySprite : this.smokeSprite;
     for (let i = 0; i < S.cap; i++) {
       if (!S.alive(i)) continue;
       const a = smokeAlpha(S, i);

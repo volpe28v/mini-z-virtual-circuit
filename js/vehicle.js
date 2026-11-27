@@ -126,7 +126,9 @@ export class Vehicle {
 
     const strength = st.driftStrength;
     const maxD = st.maxDrift * DEG;
-    const amp = Math.min(1, strength) * (0.65 + 0.35 * u);
+    // ウェット路面はグリップが低く、角度が深く、長く滑る
+    const wet = Math.min(1, Math.max(0, st.wet ?? 0));
+    const amp = Math.min(1, strength) * (0.65 + 0.35 * u) * (1 + 0.15 * wet);
     let target = Math.sign(kLook) * gLook * maxD * amp * this.driftScale;
 
     // 引きずり: コーナーを抜けても角度は急には戻らず、直線に入ってもしばらく滑り続けて、ゆっくりグリップが戻る。
@@ -137,7 +139,7 @@ export class Vehicle {
       if (flip || Math.abs(target) >= Math.abs(this._hold)) {
         this._hold = target;
       } else {
-        const tau = CARRY_TAU * carry;
+        const tau = CARRY_TAU * carry * (1 + 0.8 * wet);
         this._hold += (target - this._hold) * (1 - Math.exp(-dt / tau));
       }
       target = this._hold;
@@ -168,7 +170,7 @@ export class Vehicle {
     const rateLim = (100 * (0.5 + 0.5 * Math.min(2, strength)) * DEG);
     this.driftRate = Math.min(rateLim, Math.max(-rateLim, this.driftRate));
     this.driftAngle += this.driftRate * dt;
-    const lim = maxD * 1.12 * Math.max(this.driftScale, 1);
+    const lim = maxD * 1.12 * Math.max(this.driftScale, 1) * (1 + 0.15 * wet);
     this.driftAngle = Math.min(lim, Math.max(-lim, this.driftAngle));
 
     // 横オフセット: ドリフト中にコーナーの外側へ膨らむ

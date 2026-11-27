@@ -19,6 +19,7 @@ export const SCHEMA = [
   { key: 'wander', label: 'ライン取りのふらつき', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'carry', label: '引きずり (コーナー後の余韻)', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'feint', label: 'フェイント (振り出し)', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
+  { key: 'wet', label: 'ウェット路面 (雨)', unit: '', min: 0, max: 1, step: 0.05, def: 0 },
   { key: 'smoke', label: 'タイヤスモーク', unit: '', min: 0, max: 3, step: 0.05, def: 1 },
   { key: 'motionBlur', label: 'モーションブラー', unit: '', min: 0, max: 0.6, step: 0.05, def: 0.2 },
   { key: 'carLength', label: '車両の長さ', unit: 'mm', min: 100, max: 220, step: 1, def: 150 },

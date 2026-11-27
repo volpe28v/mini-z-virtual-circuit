@@ -257,3 +257,19 @@ test('ドリフトが終われば持ち越した時間は消える', () => {
   for (let i = 0; i < 300; i++) s.update(1 / 60, fakeVeh(0), defaults());
   assert.ok(s.driftTime < 0.05);
 });
+
+test('ウェット路面: 水煙は寿命が短く、より広がる', () => {
+  const stat = (wet) => {
+    const s = new SmokeSystem(4);
+    for (let i = 0; i < 120; i++) s.update(1 / 60, fakeVeh(30), { ...defaults(), wet });
+    let life = 0;
+    let r1 = 0;
+    let n = 0;
+    for (let k = 0; k < s.cap; k++) if (s.life[k] > 0) { life += s.life[k]; r1 += s.r1[k]; n++; }
+    return { life: life / n, r1: r1 / n };
+  };
+  const dry = stat(0);
+  const wet = stat(1);
+  assert.ok(wet.life < dry.life * 0.8, `${wet.life} ${dry.life}`);
+  assert.ok(wet.r1 > dry.r1 * 1.15, `${wet.r1} ${dry.r1}`);
+});
