@@ -392,32 +392,43 @@ export class Renderer {
 
     this._drawFinishLine(ctx, w.W);
     if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
-    if (wet > 0.45 && !this._overview) this._drawRain(ctx, wet);
+    if (wet > 0.45 && !this._overview) this._drawRain(ctx, cam, r, wet);
   }
 
-  // 雨粒が路面に当たってできる波紋 (画面に固定、時間で変わる)。粒数は雨の強さに比例
-  _drawRain(ctx, wet) {
-    const n = Math.round(90 * wet);
+  // 雨粒が路面に当たってできる波紋。路面 (ワールド座標) に固定されていて、路面と一緒に流れる。
+  // ワールドを格子に区切り、格子ごとに「いつ・どこに落ちるか」を位置と時刻から決める (状態を持たない)
+  _drawRain(ctx, cam, viewR, wet) {
+    const C = 34; // 格子の大きさ (mm)
     const t = performance.now() / 1000;
-    const W = this.canvas.width;
-    const H = this.canvas.height;
+    const hash = (x, y, z) => {
+      const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+      return h - Math.floor(h);
+    };
     const groups = [new Path2D(), new Path2D(), new Path2D()];
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    for (let i = 0; i < n; i++) {
-      const ph = t * 1.8 + i * 0.6180339;
-      const cyc = Math.floor(ph);
-      const f = ph - cyc;
-      const h1 = Math.sin((i + 1) * 12.9898 + cyc * 78.233) * 43758.5453;
-      const h2 = Math.sin((i + 1) * 39.346 + cyc * 11.135) * 24634.6345;
-      const x = (h1 - Math.floor(h1)) * W;
-      const y = (h2 - Math.floor(h2)) * H;
-      const rad = (2 + 16 * f) * this.pr;
-      const p = groups[Math.min(2, Math.floor(f * 3))];
-      p.moveTo(x + rad, y);
-      p.arc(x, y, rad, 0, Math.PI * 2);
+    const x0 = Math.floor((cam.px - viewR) / C);
+    const x1 = Math.floor((cam.px + viewR) / C);
+    const y0 = Math.floor((cam.py - viewR) / C);
+    const y1 = Math.floor((cam.py + viewR) / C);
+    const density = Math.min(1, 0.9 * wet);
+    for (let gy = y0; gy <= y1; gy++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        if (hash(gx, gy, 1) > density) continue; // 雨が弱いと、落ちる格子が少ない
+        const period = 0.8 + hash(gx, gy, 2) * 0.9;
+        const ph = t / period + hash(gx, gy, 3);
+        const cyc = Math.floor(ph);
+        const f = ph - cyc;
+        if (f > 0.7) continue; // 波紋が消えたあとは、次の雨粒まで空く
+        const u = f / 0.7;
+        const x = (gx + hash(gx, gy, 10 + cyc)) * C;
+        const y = (gy + hash(gx, gy, 20 + cyc)) * C;
+        const rad = 0.8 + 4.6 * u; // 実物の雨粒の波紋ぐらい (数 mm)
+        const g = groups[Math.min(2, Math.floor(u * 3))];
+        g.moveTo(x + rad, y);
+        g.arc(x, y, rad, 0, Math.PI * 2);
+      }
     }
-    ctx.lineWidth = Math.max(1, this.pr);
-    const al = [0.3, 0.18, 0.08];
+    ctx.lineWidth = 1.3 / cam.k;
+    const al = [0.32, 0.2, 0.09];
     for (let g = 0; g < 3; g++) {
       ctx.strokeStyle = `rgba(215,228,245,${al[g]})`;
       ctx.stroke(groups[g]);
