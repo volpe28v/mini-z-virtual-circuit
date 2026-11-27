@@ -16,10 +16,13 @@ export function wrapAngle(a) {
   return Math.atan2(Math.sin(a), Math.cos(a));
 }
 
-// ---- コース形状: 提供されたコース図 (①〜⑨ の番号付き) をなぞった制御点 ----
+// ---- コース定義 ----
+// points: 図の px (y 下向き) の制御点。scale: mm / px。theme / indoor は描画側が見る。
+// ridge: 提供されたコース図 (①〜⑨ の番号付き) をなぞったもの。
+// garage: 地下駐車場。駐車列のあいだの通路を、ヘアピンで折り返しながら走る (東京ドリフト風)。
 // 座標は図の px (y 下向き)。START はメインストレート (下辺) 上で、①→⑨ の順に時計回りに走る。
 const SKETCH_SCALE = 6.5; // mm / px (全長 約 13m、最小半径 約 170mm)
-const CONTROL_POINTS = [
+const RIDGE_POINTS = [
   [170, 517], [130, 517], [100, 515], // START → ① へ (下辺を左向き)
   [70, 508], [45, 488], [30, 458], [24, 420], [24, 380], [24, 350], // ① 左下の右コーナー、左辺を北へ
   [26, 340], [32, 324], [46, 313], [68, 313], [92, 325], [116, 338], [140, 336], [160, 320], // ② 左辺の山形
@@ -31,6 +34,25 @@ const CONTROL_POINTS = [
   [300, 275], [278, 312], [262, 345], [255, 375], [262, 405], [282, 424], [310, 431], // ⑧ 斜めの下りと左のヘアピン気味のコーナー
   [350, 430], [390, 429], [425, 433], [448, 450], [452, 478], [440, 503], [418, 516], [390, 518], [350, 517], [260, 517], // ⑨ 右下の 180° コーナー、メインストレートへ
 ];
+
+// 地下駐車場: 6 本の通路 (間隔 60px = 390mm) を、半径 30px (約 195mm) のヘアピンで折り返す蛇行路。
+// 折り返しは右・左・右・左・右と交互に並び (S 字の切り返しが続く)、最後は外周の通路でスタートへ戻る。
+const GARAGE_POINTS = [
+  [300, 480], [200, 480], [130, 480], // START: 下の通路を西へ
+  [100, 480], [79, 471], [70, 450], [79, 429], [100, 420], [130, 420], // 西端の折り返し (右)
+  [230, 420], [330, 420], [360, 420], [381, 411], [390, 390], [381, 369], [360, 360], [330, 360], // 東端 (左)
+  [230, 360], [130, 360], [100, 360], [79, 351], [70, 330], [79, 309], [100, 300], [130, 300], // 西端 (右)
+  [230, 300], [330, 300], [360, 300], [381, 291], [390, 270], [381, 249], [360, 240], [330, 240], // 東端 (左)
+  [230, 240], [130, 240], [100, 240], [79, 231], [70, 210], [79, 189], [100, 180], [130, 180], // 西端 (右)
+  [230, 180], [330, 180], [420, 180], [440, 180], [461, 189], [470, 210], // 上の通路を東へ、右の外周へ
+  [470, 300], [470, 400], [470, 450], [461, 471], [440, 480], [400, 480], [350, 480], // 外周を南へ、下の通路へ戻る
+];
+
+export const COURSES = {
+  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false },
+  garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, aisleSpacing: 390 },
+};
+export const COURSE_IDS = Object.keys(COURSES);
 
 // centripetal Catmull-Rom (alpha = 0.5)。閉ループ
 function catmullRomClosed(pts, step) {
@@ -65,8 +87,8 @@ function catmullRomClosed(pts, step) {
   return out;
 }
 
-function buildDensePolyline() {
-  const pts = CONTROL_POINTS.map(([x, y]) => [x * SKETCH_SCALE, y * SKETCH_SCALE]);
+function buildDensePolyline(course) {
+  const pts = course.points.map(([x, y]) => [x * course.scale, y * course.scale]);
   return catmullRomClosed(pts, DENSE_STEP);
 }
 
@@ -99,8 +121,9 @@ function smoothPeriodic(arr, sigmaSamples) {
 }
 
 export class Track {
-  constructor() {
-    const dense = buildDensePolyline();
+  constructor(courseId = 'ridge') {
+    this.course = COURSES[courseId] || COURSES.ridge;
+    const dense = buildDensePolyline(this.course);
     const n0 = dense.length;
     let xs = Float64Array.from(dense, (p) => p[0]);
     let ys = Float64Array.from(dense, (p) => p[1]);

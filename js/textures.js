@@ -175,13 +175,77 @@ export function makeGravel(size = 512) {
   return c;
 }
 
+// コンクリートの床 (地下駐車場)。細かい粒、大きな色むら、油じみ、ひび。tone: 明るさ (路面は 120、通路の外側は 78)
+export function makeConcrete(size = 1024, tone = 138, seed = 505) {
+  const rng = mulberry32(seed);
+  const fine = noiseField(size, size / 4, rng);
+  const blotch = fbm(size, [[3, 1], [6, 0.9], [12, 0.6], [24, 0.4]], rng);
+  const c = makeCanvas(size);
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const d = img.data;
+  for (let i = 0; i < size * size; i++) {
+    const g = tone + (fine[i] - 0.5) * 16 + (rng() - 0.5) * 12 + blotch[i] * 15;
+    d[i * 4] = clamp255(g);
+    d[i * 4 + 1] = clamp255(g + 1);
+    d[i * 4 + 2] = clamp255(g + 4);
+    d[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  // 油じみ (暗い大きな斑点) とひび。端をまたぐものは反対側にも描いて周期的にする
+  const wrap = (fn) => {
+    for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) fn(ox, oy);
+  };
+  for (let i = 0; i < 26; i++) {
+    const x = rng() * size;
+    const y = rng() * size;
+    const r = 14 + rng() * 40;
+    wrap((ox, oy) => {
+      const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      g.addColorStop(0, 'rgba(20,20,24,0.28)');
+      g.addColorStop(1, 'rgba(20,20,24,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x + ox - r, y + oy - r, 2 * r, 2 * r);
+    });
+  }
+  ctx.strokeStyle = 'rgba(30,30,34,0.35)';
+  ctx.lineWidth = 1.1;
+  for (let i = 0; i < 30; i++) {
+    let x = rng() * size;
+    let y = rng() * size;
+    let a = rng() * Math.PI * 2;
+    const pts = [[x, y]];
+    for (let j = 0; j < 8; j++) {
+      a += (rng() - 0.5) * 1.2;
+      x += Math.cos(a) * (10 + rng() * 18);
+      y += Math.sin(a) * (10 + rng() * 18);
+      pts.push([x, y]);
+    }
+    wrap((ox, oy) => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0] + ox, pts[0][1] + oy);
+      for (const [px, py] of pts) ctx.lineTo(px + ox, py + oy);
+      ctx.stroke();
+    });
+  }
+  return c;
+}
+
 // タイル 1 枚が覆うワールド上の長さ (mm)
-export const TILE_MM = { asphalt: 200, grass: 300, gravel: 100 };
+export const TILE_MM = { asphalt: 200, grass: 300, gravel: 100, concrete: 260, concreteDark: 260 };
 
 export function makeAllTextures() {
-  return {
+  const tex = {
     asphalt: makeAsphalt(),
     grass: makeGrass(),
     gravel: makeGravel(),
   };
+  // 地下駐車場のコースでだけ使うので、最初に必要になったときに作る (起動を遅くしない)
+  const lazy = (name, make) => {
+    let v = null;
+    Object.defineProperty(tex, name, { get: () => (v ||= make()), enumerable: true });
+  };
+  lazy('concrete', () => makeConcrete(1024, 120, 505));
+  lazy('concreteDark', () => makeConcrete(1024, 78, 606));
+  return tex;
 }

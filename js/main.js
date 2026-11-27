@@ -23,7 +23,7 @@ try {
 const settings = loadSettings(storage, env);
 
 const canvas = document.getElementById('scene');
-const track = new Track();
+let track = new Track(settings.course);
 const vehicle = new Vehicle(track);
 vehicle.lapVariation = true; // 周ごとに軌跡がわずかにずれる (タイヤ痕が 1 本に重ならない)
 const textures = makeAllTextures();
@@ -38,8 +38,21 @@ live.dark = 0;
 live.warm = 0;
 live.wet = settings.wet;
 live.rain = settings.wet;
-const skids = new SkidMarks(track.length);
+let skids = new SkidMarks(track.length);
 renderer.skids = skids;
+
+// コースの切り替え: 新しいコースで走り直す (車・タイヤ痕・煙をリセットし、ワールドを作り直す)
+function applyCourse() {
+  track = new Track(settings.course);
+  vehicle.track = track;
+  vehicle.reset();
+  skids = new SkidMarks(track.length);
+  renderer.skids = skids;
+  renderer.setTrack(track);
+  renderer.buildWorld(settings);
+  smoke.reset();
+  if (window.__mzvc) Object.assign(window.__mzvc, { track, skids });
+}
 
 // ---- 保存・再構築 (デバウンス) ----
 let saveTimer = 0;
@@ -88,7 +101,8 @@ function resize() {
 
 const ui = createUI(settings, {
   onChange(key) {
-    if (REBUILD_KEYS.has(key)) scheduleRebuild();
+    if (key === 'course') applyCourse();
+    else if (REBUILD_KEYS.has(key)) scheduleRebuild();
     if (key === 'brightness') applyBrightness();
     if (key === 'renderScale' || key === 'autoRes') resize();
     if (key === 'playing') {
@@ -100,6 +114,7 @@ const ui = createUI(settings, {
   onReset() {
     const d = defaults(env);
     Object.assign(settings, d, { pxPerMm: settings.pxPerMm }); // 実寸の校正は残す
+    if (track.course.id !== settings.course) applyCourse();
     autoScale = 1;
     saveAutoScale();
     applyBrightness();
@@ -138,6 +153,7 @@ function frame(now) {
   last = now;
   if (!(dt > 0)) dt = 0;
   if (dt > 0.05) dt = 0.05; // タブ切り替え後などの大きな飛びを防ぐ
+  const indoor = !!track.course.indoor;
   if (settings.autoTime) {
     if (settings.playing) timeOfDay.update(dt);
     live.dark = timeOfDay.dark;
@@ -153,6 +169,14 @@ function frame(now) {
   } else {
     live.wet = settings.wet;
     live.rain = settings.wet;
+  }
+  // 屋内 (地下駐車場) は、天候も時間帯も関係ない。薄暗い固定の明かりで、路面は乾いている
+  live.indoor = indoor;
+  if (indoor) {
+    live.dark = 0.74;
+    live.warm = 0;
+    live.wet = 0;
+    live.rain = 0;
   }
   if (settings.playing) {
     vehicle.update(dt, live, (v) => skids.update(v, live)); // タイヤ痕は固定ステップごとに記録
@@ -191,7 +215,7 @@ function frame(now) {
     }
     const lap = Math.floor(vehicle.progress / track.length) + 1;
     ui.setStatus(
-      `${fps.toFixed(0)} fps · ${settings.autoTime ? timeOfDay.label : '時間帯手動'} · ${settings.autoWeather ? weather.label : '天候手動'} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
+      `${fps.toFixed(0)} fps · ${indoor ? '屋内' : `${settings.autoTime ? timeOfDay.label : '時間帯手動'} · ${settings.autoWeather ? weather.label : '天候手動'}`} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
     );
   }
 }

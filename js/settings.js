@@ -28,6 +28,19 @@ export const SCHEMA = [
   { key: 'renderScale', label: '描画解像度', unit: '', min: 0.5, max: 1, step: 0.05, def: 1 },
 ];
 
+// 選択式の設定 (値は options の先頭の要素 [値, 表示名])
+export const CHOICES = [
+  {
+    key: 'course',
+    label: 'コース',
+    options: [
+      ['ridge', 'Ridge 風サーキット'],
+      ['garage', '地下駐車場 (ドリフト)'],
+    ],
+    def: 'ridge',
+  },
+];
+
 export const BOOLEANS = [
   { key: 'showCar', label: '仮想車両を表示 (デバッグ)', def: false },
   { key: 'autoTime', label: '時間帯を自動で変える (昼→夕方→夜)', def: true },
@@ -50,6 +63,7 @@ export function defaults(env = {}) {
   const d = { version: SETTINGS_VERSION, pxPerMm: guessPxPerMm(env.screenWidth, env.screenHeight) };
   for (const s of SCHEMA) d[s.key] = s.def;
   for (const b of BOOLEANS) d[b.key] = b.def;
+  for (const c of CHOICES) d[c.key] = c.def;
   return d;
 }
 
@@ -68,6 +82,9 @@ export function sanitize(raw, env = {}) {
   }
   for (const b of BOOLEANS) {
     if (typeof raw[b.key] === 'boolean') out[b.key] = raw[b.key];
+  }
+  for (const c of CHOICES) {
+    if (c.options.some(([v]) => v === raw[c.key])) out[c.key] = raw[c.key];
   }
   // 旧バージョンの保存値が旧既定値のままなら、新しい既定値を使う
   const savedVersion = typeof raw.version === 'number' ? raw.version : 1;

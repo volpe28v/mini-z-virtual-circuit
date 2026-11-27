@@ -1,5 +1,5 @@
 // 設定パネル、再生/停止、UI の非表示と再表示、実寸キャリブレーション。
-import { SCHEMA, BOOLEANS, PX_PER_MM_RANGE } from './settings.js';
+import { SCHEMA, BOOLEANS, CHOICES, PX_PER_MM_RANGE } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +33,36 @@ export function createUI(settings, handlers) {
     <p class="hint">実物の車体を載せたまま触るときは、画面の端のボタンを使ってください。</p>`;
   const rowsEl = panel.querySelector('#rows');
 
+  // 選択式 (コースなど): ボタンの並び
+  for (const c of CHOICES) {
+    const row = document.createElement('div');
+    row.className = 'row choice';
+    row.innerHTML = `<label><span>${c.label}</span></label><div class="seg" role="radiogroup"></div>`;
+    rowsEl.appendChild(row);
+    const seg = row.querySelector('.seg');
+    const buttons = new Map();
+    for (const [value, name] of c.options) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = name;
+      btn.setAttribute('role', 'radio');
+      btn.addEventListener('click', () => {
+        if (settings[c.key] === value) return;
+        settings[c.key] = value;
+        sync();
+        handlers.onChange(c.key);
+      });
+      seg.appendChild(btn);
+      buttons.set(value, btn);
+    }
+    const sync = () => {
+      for (const [value, btn] of buttons) {
+        btn.setAttribute('aria-checked', String(settings[c.key] === value));
+        btn.classList.toggle('on', settings[c.key] === value);
+      }
+    };
+    rows.set(c.key, { choice: sync });
+  }
   for (const b of BOOLEANS) {
     if (b.key === 'playing') continue; // 再生/停止は専用ボタン
     const label = document.createElement('label');
@@ -63,6 +93,7 @@ export function createUI(settings, handlers) {
   }
 
   function syncAll() {
+    for (const c of CHOICES) rows.get(c.key).choice();
     for (const b of BOOLEANS) {
       const r = rows.get(b.key);
       if (r) r.input.checked = !!settings[b.key];

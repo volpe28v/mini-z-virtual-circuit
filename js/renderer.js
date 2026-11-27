@@ -16,7 +16,6 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.scene = document.createElement('canvas');
     this.sctx = this.scene.getContext('2d', { alpha: false });
-    this.track = track;
     this.tex = textures;
     this.pr = 1;
     this.cssW = 1;
@@ -25,14 +24,7 @@ export class Renderer {
     this.world = null;
     this.marks = null;
 
-    const N = track.N;
-    this.nx = new Float64Array(N);
-    this.ny = new Float64Array(N);
-    for (let i = 0; i < N; i++) {
-      this.nx[i] = -Math.sin(track.theta[i]);
-      this.ny[i] = Math.cos(track.theta[i]);
-    }
-    this.corners = this._findCorners();
+    this.setTrack(track);
     this._tmp = {};
     this.smoke = null; // SmokeSystem (main.js が設定)
     this.skids = null; // SkidMarks (main.js が設定)
@@ -41,7 +33,26 @@ export class Renderer {
     this.smokeSprite = this._makeSmokeSprite();
     this.spraySprite = this._makeSmokeSprite([214, 228, 244]); // 雨の水煙 (青みがかった白)
     this.glowSprite = this._makeGlowSprite();
+    this.glowCoolSprite = this._makeGlowSprite([226, 242, 238]); // 蛍光灯 (青白)
     this._t0 = 0;
+  }
+
+  // コースを差し替える (法線・コーナーを計算し直し、ワールドは次の描画で作り直す)
+  setTrack(track) {
+    this.track = track;
+    this.theme = track.course ? track.course.theme : 'circuit';
+    const N = track.N;
+    this.nx = new Float64Array(N);
+    this.ny = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      this.nx[i] = -Math.sin(track.theta[i]);
+      this.ny[i] = Math.cos(track.theta[i]);
+    }
+    this.corners = this._findCorners();
+    this.world = null;
+    this.marks = null;
+    this._skidPath = null;
+    this._skidVersion = -1;
   }
 
   // 煙 1 粒ぶんの、ふわっとした円形のスプライト (1 枚を拡大縮小して使い回す)
@@ -60,15 +71,22 @@ export class Renderer {
   }
 
   // 街灯の光だまり (暖色の円形グラデーション。加算で重ねる)
-  _makeGlowSprite() {
+  _makeGlowSprite(rgb) {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const g = c.getContext('2d');
     const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255,238,200,1)');
-    grad.addColorStop(0.12, 'rgba(255,222,160,0.8)');
-    grad.addColorStop(0.45, 'rgba(255,196,120,0.28)');
-    grad.addColorStop(1, 'rgba(255,180,100,0)');
+    if (rgb) {
+      const [R, G, B] = rgb;
+      grad.addColorStop(0, `rgba(${R},${G},${B},0.9)`);
+      grad.addColorStop(0.4, `rgba(${R},${G},${B},0.38)`);
+      grad.addColorStop(1, `rgba(${R},${G},${B},0)`);
+    } else {
+      grad.addColorStop(0, 'rgba(255,238,200,1)');
+      grad.addColorStop(0.12, 'rgba(255,222,160,0.8)');
+      grad.addColorStop(0.45, 'rgba(255,196,120,0.28)');
+      grad.addColorStop(1, 'rgba(255,180,100,0)');
+    }
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
     return c;
@@ -106,6 +124,11 @@ export class Renderer {
       grass: mk(this.tex.grass, TILE_MM.grass),
       gravel: mk(this.tex.gravel, TILE_MM.gravel),
     };
+    // 地下駐車場の床は、使うときに作る (テクスチャも最初に必要になったとき生成される)
+    for (const name of ['concrete', 'concreteDark']) {
+      let v = null;
+      Object.defineProperty(p, name, { get: () => (v ||= mk(this.tex[name], TILE_MM[name])), enumerable: true });
+    }
     this.patCache.set(ctx, p);
     return p;
   }
@@ -227,12 +250,13 @@ export class Renderer {
       const outside = -co.sign;
       kerb(co, inside, co.a + 0.15 * L, co.b - 0.15 * L);
       kerb(co, outside, co.a + 0.3 * L, Math.min(co.b + 0.1 * L, co.b + 12));
-      runoffStrip(co, outside, co.a + 0.3 * L, co.b + 0.2 * L);
+      if (this.theme !== 'garage') runoffStrip(co, outside, co.a + 0.3 * L, co.b + 0.2 * L);
     }
 
     const puddles = this._buildPuddles(half);
     const lamps = this._buildLamps(half);
-    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps };
+    const garage = this.theme === 'garage' ? this._buildGarage(half, W) : null;
+    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
     this.buildMarks(st);
   }
 
@@ -240,6 +264,12 @@ export class Renderer {
   _buildLamps(half) {
     const t = this.track;
     const out = [];
+    if (this.theme === 'garage') {
+      // 天井の蛍光灯: 通路の中心に沿って一定間隔 (x, y, 向き)。縦横の通路が交わる所だけ間引く必要はない
+      const step = Math.round(430 / t.ds);
+      for (let i = 0; i < t.N; i += step) out.push(t.x[i], t.y[i], t.theta[i]);
+      return out;
+    }
     const step = Math.round(520 / t.ds);
     for (let i = 0, n = 0; i < t.N; i += step, n++) {
       const side = n & 1 ? 1 : -1;
@@ -247,6 +277,109 @@ export class Renderer {
       out.push(t.x[i] + this.nx[i] * d, t.y[i] + this.ny[i] * d);
     }
     return out;
+  }
+
+  // 地下駐車場: 通路の両側の駐車車両、折り返しの柱、通路中央の線。固定の種で作るので毎回同じ
+  _buildGarage(half, W) {
+    const t = this.track;
+    const spacing = t.course.aisleSpacing || 390;
+    const depth = Math.min(125, Math.max(40, (spacing - W) / 2 - 10));
+    const margin = 8;
+    const stall = 62; // 駐車枠の幅 (mm)
+    let a = 77031;
+    const rnd = () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+    const COLORS = ['#c9ccd2', '#2b2e36', '#8d1f26', '#d9d6cc', '#27456e', '#5b6068', '#b58a2a', '#e8e8ea'];
+    const bodies = COLORS.map(() => new Path2D());
+    const roofs = new Path2D();
+    const glass = new Path2D();
+    const lines = new Path2D();
+    const stripe = (p, cx, cy, ux, uy, vx, vy, hu, hv) => {
+      // 中心 (cx, cy)、u 方向の半長 hu、v 方向の半長 hv の長方形
+      p.moveTo(cx - ux * hu - vx * hv, cy - uy * hu - vy * hv);
+      p.lineTo(cx + ux * hu - vx * hv, cy + uy * hu - vy * hv);
+      p.lineTo(cx + ux * hu + vx * hv, cy + uy * hu + vy * hv);
+      p.lineTo(cx - ux * hu + vx * hv, cy - uy * hu + vy * hv);
+      p.closePath();
+    };
+    const near = Math.round(250 / t.ds);
+    const skip = Math.round(stall / t.ds);
+    const off = half + margin + depth / 2;
+    let count = 0;
+    for (let i = 0; i < t.N; i += skip) {
+      // 直線部だけ (曲がりの途中には置かない)
+      let straight = true;
+      for (let d = -12; d <= 12; d += 4) {
+        if (Math.abs(t.kappa[(i + d + t.N) % t.N]) > 1 / 2500) {
+          straight = false;
+          break;
+        }
+      }
+      if (!straight) continue;
+      const tx = Math.cos(t.theta[i]);
+      const ty = Math.sin(t.theta[i]);
+      for (const side of [-1, 1]) {
+        const cx = t.x[i] + this.nx[i] * side * off;
+        const cy = t.y[i] + this.ny[i] * side * off;
+        // 他の通路 (弧の距離が離れた中心線) までの最短距離
+        let dmin = Infinity;
+        let across = false; // 真横の向こう側に、隣の通路がある
+        for (let j = 0; j < t.N; j += 2) {
+          let dj = Math.abs(j - i);
+          dj = Math.min(dj, t.N - dj);
+          if (dj < near) continue;
+          // 同じ通路の続き (この地点の中心線のほぼ真上) は、隣の通路ではない
+          const lat = Math.abs((t.x[j] - t.x[i]) * this.nx[i] + (t.y[j] - t.y[i]) * this.ny[i]);
+          if (lat < 60) continue;
+          const dd = Math.hypot(t.x[j] - cx, t.y[j] - cy);
+          if (dd < dmin) dmin = dd;
+          const along = Math.abs((t.x[j] - t.x[i]) * tx + (t.y[j] - t.y[i]) * ty);
+          const cross = ((t.x[j] - t.x[i]) * this.nx[i] + (t.y[j] - t.y[i]) * this.ny[i]) * side;
+          if (along < 70 && cross > spacing - 140 && cross < spacing + 140) across = true;
+        }
+        if (dmin < half + depth / 2 + 4) continue; // 隣の通路に重なる
+        if (!across) continue; // 隣に通路がない側 (外周の壁側) には置かない
+        // 駐車枠の白線 (道路の端から奥へ)
+        const lx = t.x[i] + this.nx[i] * side * (half + margin) + tx * (stall / 2);
+        const ly = t.y[i] + this.ny[i] * side * (half + margin) + ty * (stall / 2);
+        lines.moveTo(lx, ly);
+        lines.lineTo(lx + this.nx[i] * side * depth, ly + this.ny[i] * side * depth);
+        if (rnd() < 0.18) continue; // 空き枠
+        const ci = Math.floor(rnd() * COLORS.length);
+        const nose = rnd() < 0.5 ? 1 : -1; // 頭から入れた車と、バックで入れた車
+        const hl = depth / 2 - 2; // 車の半長 (通路に直角)
+        const hw = (stall - 8) / 2; // 車の半幅
+        // 車の向きは、通路に直角 (u = 通路の外向き、v = 通路方向)
+        const ux = this.nx[i] * side;
+        const uy = this.ny[i] * side;
+        stripe(bodies[ci], cx, cy, ux, uy, tx, ty, hl, hw);
+        stripe(roofs, cx - ux * nose * hl * 0.05, cy - uy * nose * hl * 0.05, ux, uy, tx, ty, hl * 0.42, hw * 0.78);
+        stripe(glass, cx + ux * nose * hl * 0.5, cy + uy * nose * hl * 0.5, ux, uy, tx, ty, hl * 0.13, hw * 0.74);
+        stripe(glass, cx - ux * nose * hl * 0.5, cy - uy * nose * hl * 0.5, ux, uy, tx, ty, hl * 0.1, hw * 0.7);
+        count++;
+      }
+    }
+    // 折り返しの柱: 曲がりの中心に置く (全体の座標は軸に平行)
+    const pillars = [];
+    for (const co of this.corners) {
+      if (co.peak < 1 / 400) continue;
+      const m = (co.i0 + Math.round((co.a + co.b) / 2)) % t.N;
+      const k = t.kappa[m];
+      const R = 1 / Math.abs(k);
+      pillars.push(t.x[m] + this.nx[m] * Math.sign(k) * R, t.y[m] + this.ny[m] * Math.sign(k) * R);
+    }
+    // 通路の中央の線 (破線)
+    const center = new Path2D();
+    for (let i = 0, first = true; i < t.N; i += PATH_STRIDE * 2, first = false) {
+      if (first) center.moveTo(t.x[i], t.y[i]);
+      else center.lineTo(t.x[i], t.y[i]);
+    }
+    center.closePath();
+    return { bodies, colors: COLORS, roofs, glass, lines, pillars, center, count, depth };
   }
 
   // 水たまり: 路面に固定した楕円 (走行方向に細長い)。固定の種で作るので毎回同じ場所
@@ -331,22 +464,25 @@ export class Renderer {
     const gx = cam.px - r;
     const gy = cam.py - r;
 
-    // 芝 (大きな色むらはタイルに焼き込み済み)
-    ctx.fillStyle = P.grass;
+    const garage = this.theme === 'garage';
+    // 芝 (大きな色むらはタイルに焼き込み済み)。地下駐車場は暗いコンクリートの床
+    ctx.fillStyle = garage ? P.concreteDark : P.grass;
     ctx.fillRect(gx, gy, 2 * r, 2 * r);
 
-    // ランオフ (砂利)
-    ctx.fillStyle = P.gravel;
-    ctx.fill(w.runoff);
-    ctx.strokeStyle = 'rgba(30,24,16,0.35)';
-    ctx.lineWidth = 1.2;
-    ctx.stroke(w.runoff);
+    if (!garage) {
+      // ランオフ (砂利)
+      ctx.fillStyle = P.gravel;
+      ctx.fill(w.runoff);
+      ctx.strokeStyle = 'rgba(30,24,16,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke(w.runoff);
+    }
 
     const wet = Math.min(1, Math.max(0, st.wet || 0));
     // 縁石 (赤白) + 汚れ + 立体感の線
-    ctx.fillStyle = '#c4272c';
+    ctx.fillStyle = garage ? '#e0b01c' : '#c4272c'; // 地下駐車場は黄黒のポールガード
     ctx.fill(w.red);
-    ctx.fillStyle = '#e9e6de';
+    ctx.fillStyle = garage ? '#25272c' : '#e9e6de';
     ctx.fill(w.white);
     ctx.lineJoin = 'round';
     ctx.strokeStyle = 'rgba(0,0,0,0.38)';
@@ -363,8 +499,9 @@ export class Renderer {
     }
 
     // 路面
-    ctx.fillStyle = P.asphalt;
+    ctx.fillStyle = garage ? P.concrete : P.asphalt;
     ctx.fill(w.road, 'evenodd');
+    if (garage) this._drawGarageFloor(ctx, w.garage);
     if (wet > 0.01) {
       // 濡れたアスファルトは暗く青みがかり、水たまりが光る
       ctx.fillStyle = `rgba(8,16,30,${(0.45 * wet).toFixed(3)})`;
@@ -421,10 +558,58 @@ export class Renderer {
     ctx.stroke(w.rightEdge);
 
     this._drawFinishLine(ctx, w.W);
+    if (garage) this._drawPillars(ctx, w.garage);
     if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
     if (!this._overview) this._drawLighting(ctx, cam, st, w, r, m, wet);
     const rain = Math.min(1, Math.max(0, st.rain ?? st.wet ?? 0));
     if (rain > 0.2 && !this._overview) this._drawRain(ctx, cam, r, rain);
+  }
+
+  // 地下駐車場の床: 駐車枠の線、駐車している車、通路中央の破線。柱は縁石のあとで描く (_drawPillars)
+  _drawGarageFloor(ctx, g) {
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = 'rgba(232,232,224,0.5)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke(g.lines);
+    // 影 (少しずらした暗い塊) → 車体 → ルーフ → ガラス
+    ctx.save();
+    ctx.translate(3, 3);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    for (const p of g.bodies) ctx.fill(p);
+    ctx.restore();
+    for (let i = 0; i < g.bodies.length; i++) {
+      ctx.fillStyle = g.colors[i];
+      ctx.fill(g.bodies[i]);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    ctx.fill(g.roofs);
+    ctx.fillStyle = 'rgba(14,18,26,0.86)';
+    ctx.fill(g.glass);
+    // 通路中央の黄色い破線
+    ctx.strokeStyle = 'rgba(232,196,64,0.62)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([26, 22]);
+    ctx.stroke(g.center);
+    ctx.setLineDash([]);
+  }
+
+  _drawPillars(ctx, g) {
+    const S = 46;
+    for (let i = 0; i < g.pillars.length; i += 2) {
+      const x = g.pillars[i];
+      const y = g.pillars[i + 1];
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(x - S / 2 + 4, y - S / 2 + 4, S, S);
+      ctx.fillStyle = '#8b8d92';
+      ctx.fillRect(x - S / 2, y - S / 2, S, S);
+      ctx.fillStyle = '#e0b01c';
+      for (const [dx, dy] of [[-S / 2, -S / 2], [S / 2 - 6, -S / 2], [-S / 2, S / 2 - 6], [S / 2 - 6, S / 2 - 6]]) {
+        ctx.fillRect(x + dx, y + dy, 6, 6);
+      }
+      ctx.strokeStyle = 'rgba(40,40,44,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - S / 2, y - S / 2, S, S);
+    }
   }
 
   // 夕方・夜: 全体を暗く色づけ (ヘッドライトの届く範囲だけ明るく残す)、街灯の光だまり、濡れた路面への反射
@@ -477,7 +662,25 @@ export class Renderer {
     }
     // 街灯の光だまり (路面に固定、路面と一緒に流れる)。濡れていると強く反射する
     const lampA = Math.min(1, dark * 1.3) * (0.55 + 0.45 * wet);
-    if (lampA > 0.02) {
+    if (st.indoor && lampA > 0.02) {
+      // 天井の蛍光灯: 通路に沿って細長い、青白い光だまり。ときどき短くちらつく
+      const t = performance.now() / 1000;
+      ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      const L = w.lamps;
+      const RX = 105;
+      const RY = 70;
+      for (let i = 0, n = 0; i < L.length; i += 3, n++) {
+        if (Math.abs(L[i] - cam.px) > viewR + RX || Math.abs(L[i + 1] - cam.py) > viewR + RX) continue;
+        const flick = (t * 2.3 + n * 1.713) % 9 < 0.1 ? 0.35 : 1;
+        ctx.globalAlpha = lampA * 0.8 * flick;
+        ctx.save();
+        ctx.translate(L[i], L[i + 1]);
+        ctx.rotate(L[i + 2]);
+        ctx.drawImage(this.glowCoolSprite, -RX, -RY, 2 * RX, 2 * RY);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    } else if (lampA > 0.02) {
       ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
       ctx.globalAlpha = lampA;
       const R = 80 * (1 + 0.25 * wet);
