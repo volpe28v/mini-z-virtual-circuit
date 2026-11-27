@@ -6,7 +6,6 @@ import { makeAllTextures } from './textures.js';
 import { Renderer } from './renderer.js';
 import { SmokeSystem } from './smoke.js';
 import { SkidMarks } from './skids.js';
-import { EngineModel, EngineSound, squealLevel } from './enginesound.js';
 import { createUI } from './ui.js';
 
 const params = new URLSearchParams(location.search);
@@ -31,28 +30,6 @@ const smoke = new SmokeSystem();
 renderer.smoke = smoke;
 const skids = new SkidMarks(track.length);
 renderer.skids = skids;
-
-// ---- 走行音 (実車のエンジン音 + タイヤ音)。iPad は、ユーザーの操作の中で音を有効にする必要がある ----
-const engineModel = new EngineModel();
-let audio = null;
-let audioMuted = true;
-let audioAt = 0;
-function ensureAudio() {
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return; // Web Audio 非対応の環境では無音のまま動く
-  try {
-    // iOS の消音スイッチで消えないようにする (対応環境のみ)
-    if (navigator.audioSession) navigator.audioSession.type = 'playback';
-  } catch {
-    /* 非対応 */
-  }
-  try {
-    if (!audio) audio = new EngineSound(new AC());
-    if (audio.ctx.state !== 'running') audio.ctx.resume().catch(() => {});
-  } catch (e) {
-    console.warn('audio init failed', e);
-  }
-}
 
 // ---- 保存・再構築 (デバウンス) ----
 let saveTimer = 0;
@@ -104,7 +81,6 @@ const ui = createUI(settings, {
     if (REBUILD_KEYS.has(key)) scheduleRebuild();
     if (key === 'brightness') applyBrightness();
     if (key === 'renderScale' || key === 'autoRes') resize();
-    if (key === 'sound' && settings.sound) ensureAudio(); // ボタン/チェックのクリックの中で音を有効にする
     if (key === 'playing') {
       if (settings.playing) acquireWakeLock();
       last = performance.now();
@@ -155,25 +131,6 @@ function frame(now) {
   if (settings.playing) {
     vehicle.update(dt, settings, (v) => skids.update(v, settings)); // タイヤ痕は固定ステップごとに記録
     smoke.update(dt, vehicle, settings);
-    engineModel.update(dt, vehicle.speed, settings.speed);
-  }
-  if (audio) {
-    const want = settings.sound && settings.playing && !overview;
-    if (want === audioMuted) {
-      audioMuted = !want;
-      audio.setMuted(audioMuted);
-    }
-    if (now - audioAt >= 33) {
-      audioAt = now;
-      audio.update({
-        rpm: engineModel.rpm,
-        throttle: engineModel.throttle,
-        squeal: squealLevel(vehicle.driftAngle, settings.maxDrift, vehicle.speed, settings.speed),
-        speedNorm: Math.min(1, vehicle.speed / Math.max(1, settings.speed)),
-        volume: settings.volume,
-        tire: settings.tireSound,
-      });
-    }
   }
 
   const w = window.innerWidth;
@@ -231,11 +188,6 @@ acquireWakeLock();
 
 // バックグラウンドから復帰したら時刻基準を取り直し、Wake Lock を再取得
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    if (audio) audio.ctx.suspend().catch(() => {}); // バックグラウンドでは鳴らさない
-  } else if (settings.sound) {
-    ensureAudio();
-  }
   if (document.visibilityState === 'visible') {
     last = performance.now();
     autoHoldUntil = last + 2000;
@@ -248,15 +200,6 @@ window.addEventListener('pageshow', () => {
   last = performance.now();
   acquireWakeLock();
 });
-
-// 前回「音あり」で終了した場合: 画面を最初にタップした時点で音を有効にする (操作なしでは鳴らせない)
-window.addEventListener(
-  'pointerdown',
-  () => {
-    if (settings.sound) ensureAudio();
-  },
-  { passive: true },
-);
 
 // ピンチズームやダブルタップ拡大を抑止 (iOS Safari)
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) {
@@ -272,4 +215,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // テスト用に公開 (Playwright から状態を確認する)
-window.__mzvc = { settings, vehicle, track, renderer, smoke, skids, engineModel, getAudio: () => audio, sanitize };
+window.__mzvc = { settings, vehicle, track, renderer, smoke, skids, sanitize };

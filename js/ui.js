@@ -8,11 +8,6 @@ const ICON_PAUSE =
 const ICON_PLAY =
   '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M7 4l13 8-13 8z"/></svg>';
 
-const ICON_SOUND_ON =
-  '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 8v8a4.5 4.5 0 002.5-4zM14 3.2v2.1a7 7 0 010 13.4v2.1a9 9 0 000-17.6z"/></svg>';
-const ICON_SOUND_OFF =
-  '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3z"/><path stroke="currentColor" stroke-width="2" d="M15 9l6 6m0-6l-6 6" fill="none"/></svg>';
-
 function fmt(def, v) {
   if (def.percent) return `${Math.round(v * 100)}%`;
   const digits = def.step < 0.1 ? 2 : def.step < 1 ? 1 : 0;
@@ -47,7 +42,6 @@ export function createUI(settings, handlers) {
     const input = label.querySelector('input');
     input.addEventListener('change', () => {
       settings[b.key] = input.checked;
-      if (b.key === 'sound') syncSound();
       handlers.onChange(b.key);
     });
     rows.set(b.key, { input });
@@ -79,7 +73,6 @@ export function createUI(settings, handlers) {
       r.out.textContent = fmt(s, settings[s.key]);
     }
     syncPlay();
-    syncSound();
     calibRange.value = String(settings.pxPerMm);
     updateCalibLine();
   }
@@ -94,27 +87,6 @@ export function createUI(settings, handlers) {
     settings.playing = !settings.playing;
     syncPlay();
     handlers.onChange('playing');
-  });
-
-  // ---- 走行音のオン/オフ (ユーザーの操作の中で音を有効にする必要がある: iPad の自動再生の制限) ----
-  // HTML が古いまま (ブラウザのキャッシュ) でも動くよう、ボタンが無ければここで作る
-  let btnSound = $('btnSound');
-  if (!btnSound) {
-    btnSound = document.createElement('button');
-    btnSound.id = 'btnSound';
-    btnSound.setAttribute('aria-label', '走行音のオン・オフ');
-    $('btnPlay').after(btnSound);
-  }
-  function syncSound() {
-    btnSound.innerHTML = settings.sound ? ICON_SOUND_ON : ICON_SOUND_OFF;
-    btnSound.setAttribute('aria-pressed', String(!!settings.sound));
-    const cb = rows.get('sound');
-    if (cb) cb.input.checked = !!settings.sound;
-  }
-  btnSound.addEventListener('click', () => {
-    settings.sound = !settings.sound;
-    syncSound();
-    handlers.onChange('sound');
   });
 
   // ---- パネルの開閉 ----

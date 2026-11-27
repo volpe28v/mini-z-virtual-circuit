@@ -237,7 +237,7 @@ body.ui-hidden #calibBar {
 #calibBar {
   position: fixed;
   top: max(8px, env(safe-area-inset-top));
-  left: calc(max(8px, env(safe-area-inset-left)) + 224px);
+  left: calc(max(8px, env(safe-area-inset-left)) + 168px);
   right: max(8px, env(safe-area-inset-right));
   display: grid;
   grid-template-columns: 46px 1fr 46px auto;

@@ -16,8 +16,6 @@ export const SCHEMA = [
   { key: 'carX', label: '車両位置 X', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.5, percent: true },
   { key: 'carY', label: '車両位置 Y', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.6, percent: true },
   { key: 'brightness', label: '路面の明るさ', unit: '', min: 0.5, max: 1.5, step: 0.01, def: 1 },
-  { key: 'volume', label: '走行音の音量', unit: '', min: 0, max: 1, step: 0.05, def: 0.6 },
-  { key: 'tireSound', label: 'タイヤ音の大きさ', unit: '', min: 0, max: 2, step: 0.05, def: 1 },
   { key: 'smoke', label: 'タイヤスモーク', unit: '', min: 0, max: 3, step: 0.05, def: 1 },
   { key: 'motionBlur', label: 'モーションブラー', unit: '', min: 0, max: 0.6, step: 0.05, def: 0.2 },
   { key: 'carLength', label: '車両の長さ', unit: 'mm', min: 100, max: 220, step: 1, def: 150 },
@@ -26,7 +24,6 @@ export const SCHEMA = [
 ];
 
 export const BOOLEANS = [
-  { key: 'sound', label: '走行音を出す (エンジン音・タイヤ音)', def: false },
   { key: 'showCar', label: '仮想車両を表示 (デバッグ)', def: false },
   { key: 'autoRes', label: '重いときは解像度を自動で下げる', def: true },
   { key: 'playing', label: '再生', def: true },
