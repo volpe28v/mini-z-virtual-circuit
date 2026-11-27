@@ -6,6 +6,8 @@ const FIXED_STEP = 1 / 120;
 const LOOKAHEAD_S = 0.16; // ドリフト開始を先読みする時間
 const K_LOW = 1 / 1200; // これより緩いコーナーではドリフトしない
 const K_HIGH = 1 / 250; // これより急なコーナーでは最大角
+const FEINT_LOOK_S = 0.8; // フェイントのためにコーナーを先読みする時間
+const FEINT_ANGLE = 0.7; // フェイントの振り出し角 (最大ドリフト角に対する比。設定 1 のとき)
 
 function smoothstep(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -28,6 +30,8 @@ export class Vehicle {
     this.offsetBias = 0; // 横位置のずれ (mm)
     this.lapVariation = false; // true なら、周回ごとにドリフト角 (±10%) と横位置 (±7mm) をわずかに変える
     this._lap = -1;
+    this._feintW = 0; // いまのフェイントの強さ 0〜1 (テスト・表示用)
+    this._feintDir = 0;
     this.pos = { x: 0, y: 0 };
     this._c = {};
     this.reset();
@@ -98,11 +102,24 @@ export class Vehicle {
     const strength = st.driftStrength;
     const maxD = st.maxDrift * DEG;
     const amp = Math.min(1, strength) * (0.65 + 0.35 * u);
-    const target = Math.sign(kLook) * gLook * maxD * amp * this.driftScale;
+    let target = Math.sign(kLook) * gLook * maxD * amp * this.driftScale;
+
+    // フェイント (D1 のフリック): 直線の終わりで、先にコーナーと逆へ車体を振り、反動でコーナーへ切り込む。
+    // 遠くのコーナーが急で、手前 (いま・先読み位置) がまだ直線のときだけ働く
+    const feint = Math.min(2, Math.max(0, st.feint ?? 0));
+    let fw = 0;
+    if (feint > 0) {
+      const kFar = tr.kappaAt(this.progress + this.speed * FEINT_LOOK_S);
+      const gFar = smoothstep(K_LOW, K_HIGH, Math.abs(kFar));
+      fw = gFar * (1 - Math.min(1, gLook * 2)) * (1 - g0);
+      target -= Math.sign(kFar) * fw * maxD * FEINT_ANGLE * feint * Math.min(1, strength + 0.3) * this.driftScale;
+      this._feintDir = Math.sign(kFar);
+    }
+    this._feintW = fw;
 
     // ドリフト角: 2 次ばね。強度が大きいほどキビキビ + 軽いオーバーシュート
     const sN = Math.min(2, Math.max(0, strength)) / 2;
-    const omega = lerp(4, 9, sN);
+    const omega = lerp(4, 9, sN) + 5 * fw; // フェイント中は素早く振る
     const zeta = lerp(0.85, 0.5, sN);
     const acc = omega * omega * (target - this.driftAngle) - 2 * zeta * omega * this.driftRate;
     this.driftRate += acc * dt;
@@ -115,7 +132,10 @@ export class Vehicle {
 
     // 横オフセット: ドリフト中にコーナーの外側へ膨らむ
     const oTarget =
-      -Math.sign(k0) * g0 * 0.14 * st.trackWidth * Math.min(1, strength) + this.offsetBias;
+      -Math.sign(k0) * g0 * 0.14 * st.trackWidth * Math.min(1, strength) +
+      // フェイント中は、車体を振った側 (コーナーの外側) へ少し寄る
+      -(this._feintDir || 0) * this._feintW * 0.06 * st.trackWidth * Math.min(1, feint) +
+      this.offsetBias;
     const oOmega = 2.5;
     const oAcc = oOmega * oOmega * (oTarget - this.offset) - 2 * oOmega * this.offsetRate;
     this.offsetRate += oAcc * dt;

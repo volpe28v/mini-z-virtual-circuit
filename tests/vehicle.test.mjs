@@ -140,3 +140,58 @@ test('速度設定を変えても走行できる (最小/最大)', () => {
     assert.ok(maxJump < speed / 60 + 2);
   }
 });
+
+test('フェイント: コーナー手前でコーナーと逆へ車体を振ってから、切り込む', () => {
+  const s = { ...defaults(), feint: 1 };
+  const v = new Vehicle(track);
+  v.reset(0);
+  const dt = 1 / 120;
+  let feints = 0;
+  let prevSign = 0;
+  let inFeint = false;
+  let ok = 0;
+  while (v.progress < 2 * track.length) {
+    v.update(dt, s);
+    // 先のコーナー (急) に向かう直線で、コーナーと逆向きの角度が 5° 以上出たらフェイントとみなす
+    if (v._feintW > 0.5) {
+      const dir = Math.sign(track.kappaAt(v.progress + v.speed * 0.8));
+      if (v.driftAngle * dir < -(5 / DEG)) inFeint = true;
+      prevSign = dir;
+    } else if (inFeint && Math.abs(v.driftAngle) > 8 / DEG && v.driftAngle * prevSign > 0) {
+      ok++;
+      feints++;
+      inFeint = false;
+    }
+  }
+  assert.ok(feints >= 4, `フェイント → 切り込みの回数 ${feints}`);
+  assert.ok(ok >= 4);
+});
+
+test('フェイント 0 なら従来どおり (逆向きに振らない)', () => {
+  const s = { ...defaults(), feint: 0 };
+  const v = new Vehicle(track);
+  v.reset(0);
+  let wrong = 0;
+  while (v.progress < track.length) {
+    v.update(1 / 120, s);
+    if (v._feintW !== 0) wrong++;
+  }
+  assert.equal(wrong, 0);
+});
+
+test('フェイントでも角度の上限と滑らかさを守る', () => {
+  const s = { ...defaults(), feint: 2 };
+  const v = new Vehicle(track);
+  v.reset(0);
+  let maxAbs = 0;
+  let maxStep = 0;
+  let prev = v.heading;
+  while (v.progress < 3 * track.length) {
+    v.update(1 / 60, s);
+    maxAbs = Math.max(maxAbs, Math.abs(v.driftAngle) * DEG);
+    maxStep = Math.max(maxStep, Math.abs(wrapAngle(v.heading - prev)) * DEG);
+    prev = v.heading;
+  }
+  assert.ok(maxAbs <= s.maxDrift * 1.12 * 1.1 + 0.01, `maxAbs=${maxAbs}`);
+  assert.ok(maxStep < 3.5, `maxStep=${maxStep}`);
+});
