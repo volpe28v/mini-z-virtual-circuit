@@ -3,7 +3,7 @@
 
 export const SAMPLE_STEP = 4; // 再サンプル間隔 (mm)
 const DENSE_STEP = 2; // 折れ線生成の間隔 (mm)
-const SMOOTH_SIGMA = 30; // 位置の平滑化 (mm)
+const SMOOTH_SIGMA = 40; // 位置の平滑化 (mm)
 const KAPPA_SIGMA = 25; // 曲率の平滑化 (mm)
 const KAPPA0 = 1 / 900; // この曲率より緩ければ全速
 const U_MIN = 0.3;
@@ -16,55 +16,58 @@ export function wrapAngle(a) {
   return Math.atan2(Math.sin(a), Math.cos(a));
 }
 
-// ---- ターン形式で折れ線を作る ----
+// ---- コース形状: 提供されたコース図 (①〜⑨ の番号付き) をなぞった制御点 ----
+// 座標は図の px (y 下向き)。START はメインストレート (下辺) 上で、①→⑨ の順に時計回りに走る。
+const SKETCH_SCALE = 6.5; // mm / px (全長 約 13m、最小半径 約 170mm)
+const CONTROL_POINTS = [
+  [170, 517], [130, 517], [100, 515], // START → ① へ (下辺を左向き)
+  [70, 508], [45, 488], [30, 458], [24, 420], [24, 380], [24, 350], // ① 左下の右コーナー、左辺を北へ
+  [26, 340], [32, 324], [46, 313], [68, 313], [92, 325], [116, 338], [140, 336], [160, 320], // ② 左辺の山形
+  [178, 300], [194, 280], [206, 252], [212, 222], [212, 192], // ③ 斜め→まっすぐ北へ
+  [204, 160], [188, 130], [180, 100], [186, 72], [203, 48], [225, 32], [246, 32], // ④ 上へ膨らむ大きな右コーナー
+  [272, 48], [298, 62], [322, 76], [350, 95], [376, 97], // ⑤ 斜めの直線と小さな段
+  [400, 106], [440, 128], [481, 151], [495, 167], [495, 189], [481, 206], [459, 209], // ⑥ 右端のヘアピン (R≈190mm)
+  [430, 207], [395, 200], [365, 197], [342, 212], [325, 238], // ⑦ 折り返し後の緩い曲がり
+  [300, 275], [278, 312], [262, 345], [255, 375], [262, 405], [282, 424], [310, 431], // ⑧ 斜めの下りと左のヘアピン気味のコーナー
+  [350, 430], [390, 429], [425, 433], [448, 450], [452, 478], [440, 503], [418, 516], [390, 518], [350, 517], [260, 517], // ⑨ 右下の 180° コーナー、メインストレートへ
+];
+
+// centripetal Catmull-Rom (alpha = 0.5)。閉ループ
+function catmullRomClosed(pts, step) {
+  const n = pts.length;
+  const out = [];
+  const knot = (t, a, b) => t + Math.pow(Math.hypot(b[0] - a[0], b[1] - a[1]), 0.5);
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const p3 = pts[(i + 2) % n];
+    const t0 = 0;
+    const t1 = knot(t0, p0, p1);
+    const t2 = knot(t1, p1, p2);
+    const t3 = knot(t2, p2, p3);
+    const segLen = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+    const m = Math.max(1, Math.round(segLen / step));
+    for (let j = 0; j < m; j++) {
+      const t = t1 + ((t2 - t1) * j) / m;
+      const lerp2 = (a, b, ta, tb) => {
+        const k = (t - ta) / (tb - ta);
+        return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+      };
+      const A1 = lerp2(p0, p1, t0, t1);
+      const A2 = lerp2(p1, p2, t1, t2);
+      const A3 = lerp2(p2, p3, t2, t3);
+      const B1 = lerp2(A1, A2, t0, t2);
+      const B2 = lerp2(A2, A3, t1, t3);
+      out.push(lerp2(B1, B2, t1, t2));
+    }
+  }
+  return out;
+}
+
 function buildDensePolyline() {
-  const pts = [];
-  let x = -1000;
-  let y = 1000;
-  let th = 0;
-  pts.push([x, y]);
-
-  const line = (len) => {
-    const n = Math.max(1, Math.round(len / DENSE_STEP));
-    const d = len / n;
-    for (let i = 0; i < n; i++) {
-      x += Math.cos(th) * d;
-      y += Math.sin(th) * d;
-      pts.push([x, y]);
-    }
-  };
-  // dir: -1 = 左、+1 = 右
-  const arc = (r, deg, dir) => {
-    const total = deg * DEG;
-    const n = Math.max(2, Math.round((r * total) / DENSE_STEP));
-    const dth = (dir * total) / n;
-    const chord = 2 * r * Math.sin(Math.abs(dth) / 2);
-    for (let i = 0; i < n; i++) {
-      x += Math.cos(th + dth / 2) * chord;
-      y += Math.sin(th + dth / 2) * chord;
-      th += dth;
-      pts.push([x, y]);
-    }
-  };
-
-  line(1900); // メインストレート
-  arc(500, 90, -1); // 右側のスイーパー (左)
-  line(650);
-  arc(190, 180, -1); // ヘアピン (左)
-  line(250);
-  arc(300, 90, +1); // 右コーナー
-  line(220);
-  arc(260, 38, -1); // シケイン
-  arc(260, 76, +1);
-  arc(260, 38, -1);
-  // 閉ループにするための戻り直線と U ターン (西向き)
-  const lWest = x - -1000;
-  line(lWest);
-  const rU = (1000 - y) / 2;
-  arc(rU, 180, -1);
-  // 終点 = 始点 (-1000, 1000)
-  pts.pop();
-  return pts;
+  const pts = CONTROL_POINTS.map(([x, y]) => [x * SKETCH_SCALE, y * SKETCH_SCALE]);
+  return catmullRomClosed(pts, DENSE_STEP);
 }
 
 function gaussKernel(sigmaSamples) {
@@ -152,9 +155,9 @@ export class Track {
 
     this.speedU = this.buildProfile();
 
-    // S/F ライン: 最初の直線の x = 0 の位置
-    this.finishS = 1000;
-    this.startS = this.finishS - 120; // 少し手前から始める
+    // S/F ライン: 折れ線の始点 (= コース図の START)。少し手前から走り出す
+    this.finishS = 0;
+    this.startS = this.length - 150;
   }
 
   thetaWrapped(i) {

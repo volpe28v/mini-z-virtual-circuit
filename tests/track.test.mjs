@@ -10,8 +10,8 @@ test('コースは閉ループで、1 周でちょうど 360° 回る', () => {
   assert.ok(Math.abs(Math.abs(t.totalTurn) - 2 * Math.PI) < 0.02, `turn=${t.totalTurn}`);
 });
 
-test('全長は 6〜9m、サンプル間隔は一定', () => {
-  assert.ok(t.length > 6000 && t.length < 9000, `len=${t.length}`);
+test('全長は 10〜16m、サンプル間隔は一定', () => {
+  assert.ok(t.length > 10000 && t.length < 16000, `len=${t.length}`);
   for (let i = 0; i < t.N; i += 7) {
     const j = (i + 1) % t.N;
     const d = Math.hypot(t.x[j] - t.x[i], t.y[j] - t.y[i]);
@@ -19,13 +19,13 @@ test('全長は 6〜9m、サンプル間隔は一定', () => {
   }
 });
 
-test('最小半径は 150mm 以上 (最大コース幅 160mm でも内側が反転しない)', () => {
+test('最小半径は 165mm 以上 (最大コース幅 180mm + 縁石でも内側が反転しない)', () => {
   let kmax = 0;
   for (const k of t.kappa) kmax = Math.max(kmax, Math.abs(k));
-  assert.ok(1 / kmax >= 150, `minR=${1 / kmax}`);
+  assert.ok(1 / kmax >= 165, `minR=${1 / kmax}`);
 });
 
-test('離れた区間同士が近づきすぎない (縁石・ランオフを含めて 300mm 以上)', () => {
+test('離れた区間同士が近づきすぎない (幅 180mm + 縁石 + ランオフでも重ならない 330mm 以上)', () => {
   let minD = Infinity;
   for (let i = 0; i < t.N; i += 3) {
     for (let j = i + 1; j < t.N; j += 3) {
@@ -35,7 +35,7 @@ test('離れた区間同士が近づきすぎない (縁石・ランオフを含
       minD = Math.min(minD, Math.hypot(t.x[i] - t.x[j], t.y[i] - t.y[j]));
     }
   }
-  assert.ok(minD >= 300, `minD=${minD}`);
+  assert.ok(minD >= 330, `minD=${minD}`);
 });
 
 test('at() は周回の継ぎ目で連続 (位置・角度が飛ばない)', () => {
@@ -57,7 +57,7 @@ test('速度プロファイルは 0.3〜1、ストレートで 1、ヘアピン�
   for (const u of t.speedU) assert.ok(u >= 0.3 - 1e-9 && u <= 1 + 1e-9);
   assert.ok(Math.max(...t.speedU) > 0.99);
   assert.ok(Math.min(...t.speedU) < 0.55);
-  assert.ok(t.speedAt(t.finishS) > 0.95);
+  assert.ok(t.speedAt(t.finishS) > 0.95); // S/F ラインはメインストレート上
 });
 
 test('速度プロファイルの加減速は上限内 (進入で減速、脱出で加速)', () => {

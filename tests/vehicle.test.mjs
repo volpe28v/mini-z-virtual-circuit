@@ -75,7 +75,8 @@ test('車体は旋回方向の内側を向く (角度の符号 = 曲率の符号
 });
 
 test('ストレートではグリップが戻る (角度がほぼ 0)', () => {
-  const straight = log.filter((p) => Math.abs(p.k) < 1 / 5000 && p.s % track.length > 1100 && p.s % track.length < 1600);
+  // メインストレート (S/F ラインの手前 700mm 以内)
+  const straight = log.filter((p) => Math.abs(p.k) < 1 / 5000 && track.length - (p.s % track.length) < 700 && track.length - (p.s % track.length) > 100);
   assert.ok(straight.length > 50);
   const worst = Math.max(...straight.map((p) => Math.abs(p.d) * DEG));
   assert.ok(worst < 4, `worst=${worst}°`);

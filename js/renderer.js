@@ -116,7 +116,9 @@ export class Renderer {
         last.peak = Math.max(last.peak, r.peak);
       } else merged.push({ ...r });
     }
-    return merged.filter((r) => r.b - r.a > 15).map((r) => ({ ...r, i0 }));
+    // 短い曲がり (約 200mm 未満) には縁石・ランオフを付けない
+    const minLen = Math.round(200 / this.track.ds);
+    return merged.filter((r) => r.b - r.a > minLen).map((r) => ({ ...r, i0 }));
   }
 
   // ---- ワールドのパス組み立て ----
