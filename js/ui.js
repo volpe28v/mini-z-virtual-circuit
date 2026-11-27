@@ -97,7 +97,14 @@ export function createUI(settings, handlers) {
   });
 
   // ---- 走行音のオン/オフ (ユーザーの操作の中で音を有効にする必要がある: iPad の自動再生の制限) ----
-  const btnSound = $('btnSound');
+  // HTML が古いまま (ブラウザのキャッシュ) でも動くよう、ボタンが無ければここで作る
+  let btnSound = $('btnSound');
+  if (!btnSound) {
+    btnSound = document.createElement('button');
+    btnSound.id = 'btnSound';
+    btnSound.setAttribute('aria-label', '走行音のオン・オフ');
+    $('btnPlay').after(btnSound);
+  }
   function syncSound() {
     btnSound.innerHTML = settings.sound ? ICON_SOUND_ON : ICON_SOUND_OFF;
     btnSound.setAttribute('aria-pressed', String(!!settings.sound));
