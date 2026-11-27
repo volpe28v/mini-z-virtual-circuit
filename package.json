@@ -1,0 +1,11 @@
+{
+  "name": "mini-z-virtual-circuit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RC カーを載せて遊ぶ、iPad 用のバーチャル・ドリフトサーキット",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "python3 -m http.server 8765 --bind 127.0.0.1"
+  }
+}

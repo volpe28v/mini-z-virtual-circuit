@@ -1,0 +1,259 @@
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #eceff3;
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Segoe UI', sans-serif;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#scene {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #20301c;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0b0d0f;
+  color: #9aa3ad;
+  z-index: 50;
+}
+#loading.done {
+  display: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* 端に寄せた操作ボタン (左上)。車体が載る中央を避ける */
+#hud {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+#hud button {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(18, 20, 24, 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  font-size: 20px;
+}
+#hud button:active {
+  background: rgba(60, 66, 76, 0.8);
+}
+body.ui-hidden #hud,
+body.ui-hidden #panel,
+body.ui-hidden #calibBar {
+  display: none !important;
+}
+
+/* UI 非表示中は左右の端 (幅 28px) をタップすると再表示 */
+.edge {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  z-index: 20;
+}
+.edge[hidden] {
+  display: none;
+}
+#edgeL {
+  left: 0;
+}
+#edgeR {
+  right: 0;
+}
+
+/* 設定パネル (右端に固定) */
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, 88vw);
+  padding: max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  background: rgba(14, 16, 20, 0.9);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  z-index: 15;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+#panel[hidden] {
+  display: none;
+}
+#panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+#panel h1 {
+  margin: 0;
+  font-size: 17px;
+}
+#panel .close {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 20px;
+}
+#panel .row {
+  margin: 10px 0 14px;
+}
+#panel .row label {
+  display: flex;
+  justify-content: space-between;
+  color: #c3cad3;
+  font-size: 14px;
+}
+#panel .row output {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+#panel input[type='range'],
+#calibBar input[type='range'] {
+  width: 100%;
+  height: 36px;
+  margin: 2px 0 0;
+  accent-color: #ff4d4d;
+  touch-action: pan-y;
+}
+#panel .check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 15px;
+}
+#panel .check input {
+  width: 24px;
+  height: 24px;
+  accent-color: #ff4d4d;
+}
+#panel .buttons {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+#panel .buttons button,
+#calibBar button {
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+}
+#panel .buttons button:active,
+#calibBar button:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+#panel .buttons .danger.armed {
+  background: #b3261e;
+}
+#panel .status {
+  color: #7f8995;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+}
+#panel .hint {
+  color: #8d97a3;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+/* 実寸キャリブレーション */
+#calibLine {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  height: 0;
+  border-top: 3px solid #fff;
+  box-shadow: 0 0 0 1px #000;
+  transform: translateX(-50%);
+  z-index: 8;
+}
+#calibLine::before,
+#calibLine::after {
+  content: '';
+  position: absolute;
+  top: -14px;
+  height: 26px;
+  border-left: 3px solid #fff;
+}
+#calibLine::before {
+  left: 0;
+}
+#calibLine::after {
+  right: 0;
+}
+#calibLine span {
+  position: absolute;
+  left: 50%;
+  top: -34px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+#calibLine[hidden],
+#calibBar[hidden] {
+  display: none;
+}
+#calibBar {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  left: calc(max(8px, env(safe-area-inset-left)) + 168px);
+  right: max(8px, env(safe-area-inset-right));
+  display: grid;
+  grid-template-columns: 46px 1fr 46px auto;
+  gap: 8px;
+  align-items: center;
+  padding: 1px 10px;
+  border-radius: 16px;
+  background: rgba(14, 16, 20, 0.85);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  z-index: 12;
+}
+#calibBar .primary {
+  background: #d93025;
+}
