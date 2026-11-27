@@ -2,6 +2,7 @@
 import { cameraMatrix, viewRadiusMm, carGeometry } from './camera.js';
 import { simulateMarks } from './marks.js';
 import { TILE_MM } from './textures.js';
+import { smokeSize, smokeAlpha } from './smoke.js';
 
 const KERB_W = 18; // 縁石の幅 (mm)
 const KERB_QUAD = 7; // 縁石 1 区画 = 7 サンプル (約 28mm)
@@ -33,6 +34,22 @@ export class Renderer {
     }
     this.corners = this._findCorners();
     this._tmp = {};
+    this.smoke = null; // SmokeSystem (main.js が設定)
+    this.smokeSprite = this._makeSmokeSprite();
+  }
+
+  // 煙 1 粒ぶんの、ふわっとした円形のスプライト (1 枚を拡大縮小して使い回す)
+  _makeSmokeSprite() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(246,246,246,1)');
+    grad.addColorStop(0.35, 'rgba(238,238,238,0.6)');
+    grad.addColorStop(1, 'rgba(232,232,232,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    return c;
   }
 
   resize(cssW, cssH, dpr, renderScale = 1) {
@@ -217,6 +234,7 @@ export class Renderer {
   // ---- フレーム描画 ----
   render(cam, st, vehicle, overview = false) {
     if (!this.world) this.buildWorld(st);
+    this._overview = overview;
     const blurOn = st.motionBlur > 0.01 && !overview;
     const ctx = blurOn ? this.sctx : this.ctx;
     this._drawWorld(ctx, cam, st);
@@ -291,6 +309,23 @@ export class Renderer {
     ctx.stroke(w.rightEdge);
 
     this._drawFinishLine(ctx, w.W);
+    if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r);
+  }
+
+  _drawSmoke(ctx, cam, viewR) {
+    const S = this.smoke;
+    const sprite = this.smokeSprite;
+    for (let i = 0; i < S.cap; i++) {
+      if (!S.alive(i)) continue;
+      const a = smokeAlpha(S, i);
+      if (a < 0.01) continue;
+      const rad = smokeSize(S, i);
+      // 視野の外は描かない
+      if (Math.abs(S.x[i] - cam.px) > viewR + rad || Math.abs(S.y[i] - cam.py) > viewR + rad) continue;
+      ctx.globalAlpha = a;
+      ctx.drawImage(sprite, S.x[i] - rad, S.y[i] - rad, rad * 2, rad * 2);
+    }
+    ctx.globalAlpha = 1;
   }
 
   _drawFinishLine(ctx, W) {

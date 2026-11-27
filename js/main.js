@@ -4,6 +4,7 @@ import { Track } from './track.js';
 import { Vehicle } from './vehicle.js';
 import { makeAllTextures } from './textures.js';
 import { Renderer } from './renderer.js';
+import { SmokeSystem } from './smoke.js';
 import { createUI } from './ui.js';
 
 const params = new URLSearchParams(location.search);
@@ -23,6 +24,8 @@ const track = new Track();
 const vehicle = new Vehicle(track);
 const textures = makeAllTextures();
 const renderer = new Renderer(canvas, track, textures);
+const smoke = new SmokeSystem();
+renderer.smoke = smoke;
 
 // ---- 保存・再構築 (デバウンス) ----
 let saveTimer = 0;
@@ -120,7 +123,10 @@ function frame(now) {
   last = now;
   if (!(dt > 0)) dt = 0;
   if (dt > 0.05) dt = 0.05; // タブ切り替え後などの大きな飛びを防ぐ
-  if (settings.playing) vehicle.update(dt, settings);
+  if (settings.playing) {
+    vehicle.update(dt, settings);
+    smoke.update(dt, vehicle, settings);
+  }
 
   const w = window.innerWidth;
   const h = window.innerHeight;
@@ -204,4 +210,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // テスト用に公開 (Playwright から状態を確認する)
-window.__mzvc = { settings, vehicle, track, renderer, sanitize };
+window.__mzvc = { settings, vehicle, track, renderer, smoke, sanitize };
