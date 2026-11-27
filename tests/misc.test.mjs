@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Track, wrapAngle } from '../js/track.js';
 import { Vehicle } from '../js/vehicle.js';
 import { cameraMatrix, worldToScreen, viewRadiusMm, carGeometry } from '../js/camera.js';
-import { simulateMarks } from '../js/marks.js';
+import { simulateRubber } from '../js/marks.js';
 import { defaults, sanitize, loadSettings, saveSettings, guessPxPerMm, SCHEMA, STORAGE_KEY } from '../js/settings.js';
 
 test('設定: 既定値はすべて範囲内で、画面実寸の推定がある', () => {
@@ -95,26 +95,16 @@ test('カメラ: ドリフト中は路面が車体に対して斜めに流れる
   assert.ok(found);
 });
 
-test('タイヤ痕: ドリフト区間にだけ出て、3 段階の濃さがある', () => {
+test('ラバーライン: 走行ライン (コースの近く) に沿って作られ、ドリフト 0° でも走行ラインが取れる', () => {
   const track = new Track();
-  const m = simulateMarks(track, defaults());
-  const total = m.buckets.reduce((n, b) => n + b.length, 0);
-  assert.ok(total > 10, `polylines=${total}`);
-  assert.ok(m.buckets[2].length > 0 && m.buckets[0].length > 0);
-  assert.ok(m.rubber.length > 200);
-  // 痕はコースの近く (中心線から 150mm 以内) にある
-  const c = {};
-  for (const b of m.buckets) for (const pl of b) {
-    for (let i = 0; i < pl.length; i += 20) {
-      let best = Infinity;
-      for (let j = 0; j < track.N; j += 4) best = Math.min(best, Math.hypot(pl[i] - track.x[j], pl[i + 1] - track.y[j]));
-      assert.ok(best < 150, `distance=${best}`);
-    }
+  const rub = simulateRubber(track, defaults());
+  assert.ok(rub.length > 500);
+  for (let i = 0; i < rub.length; i += 40) {
+    let best = Infinity;
+    for (let j = 0; j < track.N; j += 4) best = Math.min(best, Math.hypot(rub[i] - track.x[j], rub[i + 1] - track.y[j]));
+    assert.ok(best < 150, `distance=${best}`);
   }
-  void c;
-  // ドリフト無効なら痕は出ない
-  const none = simulateMarks(track, { ...defaults(), maxDrift: 0 });
-  assert.equal(none.buckets.reduce((n, b) => n + b.length, 0), 0);
+  assert.ok(simulateRubber(track, { ...defaults(), maxDrift: 0 }).length > 500);
 });
 
 test('デバッグ表示の車輪: 車両の長さ・幅に比例し、車体の中に収まる', () => {
@@ -136,36 +126,5 @@ test('デバッグ表示の車輪: 車両の長さ・幅に比例し、車体の
       assert.ok(g.track / 2 + g.wheelW / 2 <= W / 2, `L=${L} W=${W} 幅方向`);
       assert.ok(g.wheelbase / 2 + g.wheelH / 2 <= L / 2, `L=${L} W=${W} 長さ方向`);
     }
-  }
-});
-
-test('タイヤ痕: 車両の幅・長さの設定に追従する (幅が広いほど痕が中心線から離れる)', () => {
-  const track = new Track();
-  const meanOffset = (st) => {
-    const m = simulateMarks(track, st);
-    let sum = 0;
-    let n = 0;
-    for (const b of m.buckets) for (const pl of b) {
-      for (let i = 0; i < pl.length; i += 6) {
-        let best = Infinity;
-        for (let j = 0; j < track.N; j += 3) best = Math.min(best, Math.hypot(pl[i] - track.x[j], pl[i + 1] - track.y[j]));
-        sum += best;
-        n++;
-      }
-    }
-    return sum / n;
-  };
-  const narrow = meanOffset({ ...defaults(), carWidth: 50 });
-  const wide = meanOffset({ ...defaults(), carWidth: 100 });
-  assert.ok(wide > narrow + 5, `wide=${wide} narrow=${narrow}`);
-  // 長さが違うと (後輪の位置が変わるので) 痕の形も変わる
-  const a = simulateMarks(track, { ...defaults(), carLength: 100 });
-  const b = simulateMarks(track, { ...defaults(), carLength: 220 });
-  assert.notDeepEqual(a.buckets[2][0].slice(0, 6), b.buckets[2][0].slice(0, 6));
-});
-
-test('車両の長さ・幅は、変更でタイヤ痕の再生成が必要な設定', () => {
-  for (const key of ['carLength', 'carWidth']) {
-    assert.equal(SCHEMA.find((s) => s.key === key).rebuild, true);
   }
 });

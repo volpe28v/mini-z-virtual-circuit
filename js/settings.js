@@ -18,8 +18,8 @@ export const SCHEMA = [
   { key: 'brightness', label: '路面の明るさ', unit: '', min: 0.5, max: 1.5, step: 0.01, def: 1 },
   { key: 'smoke', label: 'タイヤスモーク', unit: '', min: 0, max: 3, step: 0.05, def: 1 },
   { key: 'motionBlur', label: 'モーションブラー', unit: '', min: 0, max: 0.6, step: 0.05, def: 0.2 },
-  { key: 'carLength', label: '車両の長さ', unit: 'mm', min: 100, max: 220, step: 1, def: 150, rebuild: true },
-  { key: 'carWidth', label: '車両の幅', unit: 'mm', min: 50, max: 100, step: 1, def: 70, rebuild: true },
+  { key: 'carLength', label: '車両の長さ', unit: 'mm', min: 100, max: 220, step: 1, def: 150 },
+  { key: 'carWidth', label: '車両の幅', unit: 'mm', min: 50, max: 100, step: 1, def: 70 },
   { key: 'renderScale', label: '描画解像度', unit: '', min: 0.5, max: 1, step: 0.05, def: 1 },
 ];
 

@@ -5,6 +5,7 @@ import { Vehicle } from './vehicle.js';
 import { makeAllTextures } from './textures.js';
 import { Renderer } from './renderer.js';
 import { SmokeSystem } from './smoke.js';
+import { SkidMarks } from './skids.js';
 import { createUI } from './ui.js';
 
 const params = new URLSearchParams(location.search);
@@ -22,10 +23,13 @@ const settings = loadSettings(storage, env);
 const canvas = document.getElementById('scene');
 const track = new Track();
 const vehicle = new Vehicle(track);
+vehicle.lapVariation = true; // 周ごとに軌跡がわずかにずれる (タイヤ痕が 1 本に重ならない)
 const textures = makeAllTextures();
 const renderer = new Renderer(canvas, track, textures);
 const smoke = new SmokeSystem();
 renderer.smoke = smoke;
+const skids = new SkidMarks(track.length);
+renderer.skids = skids;
 
 // ---- 保存・再構築 (デバウンス) ----
 let saveTimer = 0;
@@ -38,7 +42,8 @@ function scheduleRebuild() {
   clearTimeout(rebuildTimer);
   rebuildTimer = setTimeout(() => renderer.buildWorld(settings), 150);
 }
-const REBUILD_KEYS = new Set(['speed', 'maxDrift', 'driftStrength', 'trackWidth', 'carLength', 'carWidth']);
+// ラバーライン (走行ラインの黒ずみ) の作り直しが必要な設定。タイヤ痕は走行中に記録するので対象外
+const REBUILD_KEYS = new Set(['speed', 'maxDrift', 'driftStrength', 'trackWidth']);
 
 function applyBrightness() {
   canvas.style.filter = settings.brightness === 1 ? '' : `brightness(${settings.brightness})`;
@@ -124,7 +129,7 @@ function frame(now) {
   if (!(dt > 0)) dt = 0;
   if (dt > 0.05) dt = 0.05; // タブ切り替え後などの大きな飛びを防ぐ
   if (settings.playing) {
-    vehicle.update(dt, settings);
+    vehicle.update(dt, settings, (v) => skids.update(v, settings)); // タイヤ痕は固定ステップごとに記録
     smoke.update(dt, vehicle, settings);
   }
 
@@ -210,4 +215,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // テスト用に公開 (Playwright から状態を確認する)
-window.__mzvc = { settings, vehicle, track, renderer, smoke, sanitize };
+window.__mzvc = { settings, vehicle, track, renderer, smoke, skids, sanitize };

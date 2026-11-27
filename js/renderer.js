@@ -1,6 +1,6 @@
 // ワールド描画。パス (路面・縁石・ランオフ・白線・タイヤ痕) は設定変更時にだけ組み立て、毎フレームは塗るだけ。
 import { cameraMatrix, viewRadiusMm, carGeometry } from './camera.js';
-import { simulateMarks } from './marks.js';
+import { simulateRubber } from './marks.js';
 import { TILE_MM } from './textures.js';
 import { smokeSize, smokeAlpha } from './smoke.js';
 
@@ -35,6 +35,9 @@ export class Renderer {
     this.corners = this._findCorners();
     this._tmp = {};
     this.smoke = null; // SmokeSystem (main.js が設定)
+    this.skids = null; // SkidMarks (main.js が設定)
+    this._skidPath = null;
+    this._skidVersion = -1;
     this.smokeSprite = this._makeSmokeSprite();
   }
 
@@ -212,23 +215,31 @@ export class Renderer {
     this.buildMarks(st);
   }
 
+  // ラバーライン (走行ラインの黒ずみ)。設定が変わったときに作り直す
   buildMarks(st) {
-    const { buckets, rubber } = simulateMarks(this.track, st);
-    const lines = buckets.map((pls) => {
-      const p = new Path2D();
-      for (const pl of pls) {
-        p.moveTo(pl[0], pl[1]);
-        for (let i = 2; i < pl.length; i += 2) p.lineTo(pl[i], pl[i + 1]);
-      }
-      return p;
-    });
+    const rubber = simulateRubber(this.track, st);
     const rub = new Path2D();
     if (rubber.length >= 4) {
       rub.moveTo(rubber[0], rubber[1]);
       for (let i = 2; i < rubber.length; i += 2) rub.lineTo(rubber[i], rubber[i + 1]);
       rub.closePath();
     }
-    this.marks = { lines, rubber: rub };
+    this.marks = { rubber: rub };
+  }
+
+  // 実際の走行から記録したタイヤ痕を、濃さの段階ごとの Path2D にする (痕が増減したときだけ)
+  _skidPaths() {
+    const sk = this.skids;
+    if (this._skidVersion === sk.version && this._skidPath) return this._skidPath;
+    const paths = [new Path2D(), new Path2D(), new Path2D()];
+    for (const c of sk.chunks) {
+      const p = paths[c.b];
+      p.moveTo(c.pts[0], c.pts[1]);
+      for (let i = 2; i < c.pts.length; i += 2) p.lineTo(c.pts[i], c.pts[i + 1]);
+    }
+    this._skidPath = paths;
+    this._skidVersion = sk.version;
+    return paths;
   }
 
   // ---- フレーム描画 ----
@@ -294,11 +305,22 @@ export class Renderer {
     ctx.stroke(this.marks.rubber);
     ctx.lineWidth = Math.min(26, w.W * 0.28);
     ctx.stroke(this.marks.rubber);
-    const alphas = [0.07, 0.12, 0.2];
-    ctx.lineWidth = 4.5;
-    for (let b = 0; b < 3; b++) {
-      ctx.strokeStyle = `rgba(8,8,8,${alphas[b]})`;
-      ctx.stroke(this.marks.lines[b]);
+    if (this.skids && !this._overview) {
+      const alphas = [0.09, 0.15, 0.24];
+      const done = this._skidPaths();
+      ctx.lineWidth = 4.5;
+      for (let b = 0; b < 3; b++) {
+        ctx.strokeStyle = `rgba(8,8,8,${alphas[b]})`;
+        ctx.stroke(done[b]);
+        // 記録中 (まだ区切っていない) の痕
+        for (const cur of this.skids.open) {
+          if (!cur || cur.b !== b || cur.pts.length < 4) continue;
+          ctx.beginPath();
+          ctx.moveTo(cur.pts[0], cur.pts[1]);
+          for (let i = 2; i < cur.pts.length; i += 2) ctx.lineTo(cur.pts[i], cur.pts[i + 1]);
+          ctx.stroke();
+        }
+      }
     }
 
     // 路面端の白線

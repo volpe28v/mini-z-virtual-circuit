@@ -16,11 +16,18 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+// 周ごとの変化は、黄金比に基づく数列で決める (乱数と違い、どの周も確実に散らばり、再現できる)
+function frac(x) {
+  return x - Math.floor(x);
+}
+
 export class Vehicle {
   constructor(track) {
     this.track = track;
-    this.driftScale = 1; // タイヤ痕の基準走行で周ごとに変える
-    this.offsetBias = 0;
+    this.driftScale = 1; // ドリフト角の倍率 (周ごとの変化やラバーラインの基準走行で使う)
+    this.offsetBias = 0; // 横位置のずれ (mm)
+    this.lapVariation = false; // true なら、周回ごとにドリフト角 (±10%) と横位置 (±7mm) をわずかに変える
+    this._lap = -1;
     this.pos = { x: 0, y: 0 };
     this._c = {};
     this.reset();
@@ -38,6 +45,7 @@ export class Vehicle {
     this.travelDirection = 0;
     this.speed = 0;
     this._first = true;
+    this._lap = -1;
     this._compose(0);
   }
 
@@ -65,6 +73,15 @@ export class Vehicle {
 
   _step(dt, st) {
     const tr = this.track;
+    if (this.lapVariation) {
+      // 周回が変わるたびに少しだけ変える (同じ軌跡の完全な繰り返しにならない。タイヤ痕が周ごとにずれる)
+      const lap = Math.floor(this.progress / tr.length);
+      if (lap !== this._lap) {
+        this._lap = lap;
+        this.driftScale = 0.9 + 0.2 * frac(lap * 0.754877666 + 0.3);
+        this.offsetBias = (frac(lap * 0.618033988 + 0.1) - 0.5) * 14;
+      }
+    }
     const u = tr.speedAt(this.progress);
     const vTarget = st.speed * u;
     if (this._first) {
@@ -108,12 +125,13 @@ export class Vehicle {
     this._compose();
   }
 
-  // dt 秒進める (内部は固定ステップ)
-  update(dt, st) {
+  // dt 秒進める (内部は固定ステップ)。onStep を渡すと、ステップごとに呼ぶ (タイヤ痕の記録用)
+  update(dt, st, onStep) {
     let left = dt;
     while (left > 1e-9) {
       const h = Math.min(FIXED_STEP, left);
       this._step(h, st);
+      if (onStep) onStep(this);
       left -= h;
     }
   }
