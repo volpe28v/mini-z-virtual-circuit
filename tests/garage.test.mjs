@@ -24,29 +24,57 @@ test('地下駐車場: 閉ループで、1 周でちょうど 360° 回る', () 
   assert.ok(Math.abs(wrapAngle(a.theta - b.theta)) < 0.05);
 });
 
-test('地下駐車場: 折り返しは右・左・右・左・右 (S 字の切り返しが続く) で、半円ずつ 5 回', () => {
+test('地下駐車場: 90° のコーナーが 12 個連続する (右・左・右・右・左・右・右・左・右・右・左・右)', () => {
   const N = garage.N;
-  const runs = [];
+  // 曲がっている区間ごとに、曲がる角度を合計する
+  let start = 0;
+  while (Math.abs(garage.kappa[start]) > 1 / 1500) start++; // 直線から数え始める
+  const turns = [];
   let cur = null;
-  for (let i = 0; i < N; i++) {
-    const k = garage.kappa[i];
-    if (Math.abs(k) > 1 / 250) {
-      if (!cur) cur = { sign: Math.sign(k), turn: 0 };
-      cur.turn += k * garage.ds;
-    } else if (cur) {
-      runs.push(cur);
+  for (let c = 0; c < N; c++) {
+    const k = garage.kappa[(start + c) % N];
+    if (Math.abs(k) > 1 / 1500) {
+      if (!cur) cur = 0;
+      cur += k * garage.ds;
+    } else if (cur !== null) {
+      turns.push(cur * DEG);
       cur = null;
     }
   }
-  if (cur) runs.push(cur);
-  const uturns = runs.filter((r) => Math.abs(r.turn) * DEG > 120);
-  assert.equal(uturns.length, 5, `折り返しの数 ${uturns.length}`);
-  // 周回の頭がたまたま折り返しの途中でないので、順番は 右 → 左 → 右 → 左 → 右 (κ > 0 が右)
-  const signs = uturns.map((r) => r.sign);
-  for (let i = 1; i < signs.length; i++) assert.notEqual(signs[i], signs[i - 1], '左右が交互');
+  if (cur !== null) turns.push(cur * DEG);
+  assert.equal(turns.length, 12, `コーナーの数 ${turns.length}`);
+  for (const t of turns) assert.ok(Math.abs(Math.abs(t) - 90) < 12, `90° のコーナー: ${t.toFixed(1)}°`);
+  // 右 (+) と左 (−) の並びは、周回の頭の位置によらず、巡回すると 右左右右左右右左右右左右 になる
+  const pat = turns.map((t) => (t > 0 ? 'R' : 'L')).join('');
+  assert.ok((pat + pat).includes('RLRRLRRLRRLR'), pat);
 });
 
-test('地下駐車場: 通路の間隔は 330mm 以上 (幅 180mm の道でも重ならない)、最小半径は 160mm 以上', () => {
+test('地下駐車場: 柱は 5 番の目 (四隅 + 中央) の 5 本で、四隅は十字の切れ込みに、中央は十字の内側にあり、道路に重ならない', () => {
+  const pil = garage.course.pillars.map(([x, y]) => [x * garage.course.scale, y * garage.course.scale]);
+  assert.equal(pil.length, 5);
+  const c = pil[4];
+  // 四隅が中央から等距離で、対角に並ぶ (5 番の目)
+  const d0 = Math.hypot(pil[0][0] - c[0], pil[0][1] - c[1]);
+  for (let i = 0; i < 4; i++) {
+    assert.ok(Math.abs(Math.hypot(pil[i][0] - c[0], pil[i][1] - c[1]) - d0) < 1e-6);
+    assert.ok(Math.abs(Math.abs(pil[i][0] - c[0]) - Math.abs(pil[i][1] - c[1])) < 1e-6, '対角');
+  }
+  for (const [x, y] of pil.slice(0, 4)) {
+    // 四隅の柱は、コースが曲がる円弧の中心に近い (柱をなめるように曲がる): 中心線までの距離 = 曲がりの半径
+    let d = Infinity;
+    for (let i = 0; i < garage.N; i++) d = Math.min(d, Math.hypot(garage.x[i] - x, garage.y[i] - y));
+    assert.ok(d > 175 && d < 215, `四隅の柱と中心線の距離 ${d.toFixed(0)}mm`);
+  }
+  for (const [x, y] of pil) {
+    let d = Infinity;
+    for (let i = 0; i < garage.N; i++) d = Math.min(d, Math.hypot(garage.x[i] - x, garage.y[i] - y));
+    // 柱 (一辺 58mm) と最大幅 (180mm) の道路が重ならない + 通れる余裕
+    assert.ok(d > 29 + 90 + 20, `柱とコースの距離 ${d.toFixed(0)}mm`);
+    assert.ok(d < 800, `柱がコースから遠すぎる ${d.toFixed(0)}mm`); // 中央の柱は、十字の内側から 4 つの凹みの角に囲まれる
+  }
+});
+
+test('地下駐車場: 通路の間隔は 600mm 以上、最小半径は 185mm 以上', () => {
   let minD = Infinity;
   for (let i = 0; i < garage.N; i += 3) {
     for (let j = i + 1; j < garage.N; j += 3) {
@@ -55,21 +83,21 @@ test('地下駐車場: 通路の間隔は 330mm 以上 (幅 180mm の道でも�
       minD = Math.min(minD, Math.hypot(garage.x[i] - garage.x[j], garage.y[i] - garage.y[j]));
     }
   }
-  assert.ok(minD > 330, `minD=${minD}`);
+  assert.ok(minD > 600, `minD=${minD}`);
   let minR = Infinity;
   for (let i = 0; i < garage.N; i++) minR = Math.min(minR, 1 / Math.max(1e-9, Math.abs(garage.kappa[i])));
-  assert.ok(minR > 160, `minR=${minR}`);
+  assert.ok(minR > 185, `minR=${minR}`);
 });
 
-test('地下駐車場: 全長は 12〜18m、速度プロファイルは 0.3〜1 で、折り返しで遅くなる', () => {
-  assert.ok(garage.length > 12000 && garage.length < 18000, `${garage.length}`);
+test('地下駐車場: 全長は 8〜14m、速度プロファイルは 0.3〜1 で、コーナーで遅くなる', () => {
+  assert.ok(garage.length > 8000 && garage.length < 14000, `${garage.length}`);
   let lo = 1;
   let hi = 0;
   for (const u of garage.speedU) {
     lo = Math.min(lo, u);
     hi = Math.max(hi, u);
   }
-  assert.ok(lo >= 0.3 - 1e-9 && hi <= 1 + 1e-9 && lo < 0.5 && hi > 0.95, `${lo} ${hi}`);
+  assert.ok(lo >= 0.3 - 1e-9 && hi <= 1 + 1e-9 && lo < 0.6 && hi > 0.75, `${lo} ${hi}`);
 });
 
 test('地下駐車場: 5 周走れて、折り返しで車体はコーナーの内側を向く (ドリフト角の符号 = 曲率の符号)', () => {
@@ -89,7 +117,7 @@ test('地下駐車場: 5 周走れて、折り返しで車体はコーナーの�
       if (Math.sign(v.driftAngle) === Math.sign(k)) agree++;
     }
   }
-  assert.ok(total > 100, `折り返しでドリフトしている ${total}`);
+  assert.ok(total > 100, `コーナーでドリフトしている ${total}`);
   assert.ok(agree / total > 0.85, `向きの一致 ${agree}/${total}`);
   assert.ok(maxD > st.maxDrift * 0.6 && maxD <= st.maxDrift * 1.12 * 1.1 + 0.01, `maxD=${maxD}`);
 });

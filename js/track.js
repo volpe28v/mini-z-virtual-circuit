@@ -19,7 +19,7 @@ export function wrapAngle(a) {
 // ---- コース定義 ----
 // points: 図の px (y 下向き) の制御点。scale: mm / px。theme / indoor は描画側が見る。
 // ridge: 提供されたコース図 (①〜⑨ の番号付き) をなぞったもの。
-// garage: 地下駐車場。駐車列のあいだの通路を、ヘアピンで折り返しながら走る (東京ドリフト風)。
+// garage: 地下駐車場。5 番の目に並ぶ柱のあいだを、90° のコーナーの連続で抜ける十字形のループ (東京ドリフト風)。
 // 座標は図の px (y 下向き)。START はメインストレート (下辺) 上で、①→⑨ の順に時計回りに走る。
 const SKETCH_SCALE = 6.5; // mm / px (全長 約 13m、最小半径 約 170mm)
 const RIDGE_POINTS = [
@@ -35,22 +35,72 @@ const RIDGE_POINTS = [
   [350, 430], [390, 429], [425, 433], [448, 450], [452, 478], [440, 503], [418, 516], [390, 518], [350, 517], [260, 517], // ⑨ 右下の 180° コーナー、メインストレートへ
 ];
 
-// 地下駐車場: 6 本の通路 (間隔 60px = 390mm) を、半径 30px (約 195mm) のヘアピンで折り返す蛇行路。
-// 折り返しは右・左・右・左・右と交互に並び (S 字の切り返しが続く)、最後は外周の通路でスタートへ戻る。
-const GARAGE_POINTS = [
-  [300, 480], [200, 480], [130, 480], // START: 下の通路を西へ
-  [100, 480], [79, 471], [70, 450], [79, 429], [100, 420], [130, 420], // 西端の折り返し (右)
-  [230, 420], [330, 420], [360, 420], [381, 411], [390, 390], [381, 369], [360, 360], [330, 360], // 東端 (左)
-  [230, 360], [130, 360], [100, 360], [79, 351], [70, 330], [79, 309], [100, 300], [130, 300], // 西端 (右)
-  [230, 300], [330, 300], [360, 300], [381, 291], [390, 270], [381, 249], [360, 240], [330, 240], // 東端 (左)
-  [230, 240], [130, 240], [100, 240], [79, 231], [70, 210], [79, 189], [100, 180], [130, 180], // 西端 (右)
-  [230, 180], [330, 180], [420, 180], [440, 180], [461, 189], [470, 210], // 上の通路を東へ、右の外周へ
-  [470, 300], [470, 400], [470, 450], [461, 471], [440, 480], [400, 480], [350, 480], // 外周を南へ、下の通路へ戻る
+// 地下駐車場: 3×3 の区画の境目の線をたどる十字形のループで、
+// 90° のコーナーが 12 個連続する (右・左・右・右・左・右・右・左・右・右・左・右)。
+// 四隅の柱は 4 つの凹みの角の内側にあり、コースが柱をなめるように曲がる。中央の柱は十字の内側の真ん中。
+const GARAGE_CELL = 140; // 1 区画 (px)。140px = 910mm
+const GARAGE_RADIUS = 30; // コーナーの半径 (px)。30px = 195mm
+const GARAGE_LOOP = [
+  [1, 0], [2, 0], [2, 1], [3, 1], [3, 2], [2, 2], [2, 3], [1, 3], [1, 2], [0, 2], [0, 1], [1, 1],
+].map(([x, y]) => [x * GARAGE_CELL, y * GARAGE_CELL]);
+// 柱: 5 番の目 (四隅 + 中央)。四隅の柱は、4 つの凹みの角 (左折) の曲率の中心に置く (コースが柱をなめるように曲がる)。
+// 中央の柱は、十字の内側 (インフィールド) の真ん中。
+const GARAGE_PILLARS = [
+  ...[[1, 1, -1, -1], [2, 1, 1, -1], [2, 2, 1, 1], [1, 2, -1, 1]].map(([x, y, sx, sy]) => [
+    x * GARAGE_CELL + sx * GARAGE_RADIUS,
+    y * GARAGE_CELL + sy * GARAGE_RADIUS,
+  ]),
+  [1.5 * GARAGE_CELL, 1.5 * GARAGE_CELL],
 ];
+
+// 多角形の角を円弧で丸めた制御点 (閉ループ)。直線部にも点を置いて、Catmull-Rom が直線から外れないようにする
+function roundedLoop(verts, r, straightStep) {
+  const n = verts.length;
+  const out = [];
+  const unit = (a, b) => {
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    return [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
+  };
+  for (let i = 0; i < n; i++) {
+    const prev = verts[(i - 1 + n) % n];
+    const v = verts[i];
+    const next = verts[(i + 1) % n];
+    const din = unit(prev, v);
+    const dout = unit(v, next);
+    const pin = [v[0] - din[0] * r, v[1] - din[1] * r];
+    // 円弧の中心は、入口から進行方向の横 (曲がる側) へ r
+    const cross = din[0] * dout[1] - din[1] * dout[0]; // > 0 は右折 (y 下向き)
+    const side = cross > 0 ? [-din[1], din[0]] : [din[1], -din[0]];
+    const center = [pin[0] + side[0] * r, pin[1] + side[1] * r];
+    const a0 = Math.atan2(pin[1] - center[1], pin[0] - center[0]);
+    const turn = cross > 0 ? Math.PI / 2 : -Math.PI / 2;
+    for (let k = 0; k <= 4; k++) {
+      const a = a0 + (turn * k) / 4;
+      out.push([center[0] + Math.cos(a) * r, center[1] + Math.sin(a) * r]);
+    }
+    // このコーナーの出口から次のコーナーの入口までの直線
+    const pout = [v[0] + dout[0] * r, v[1] + dout[1] * r];
+    const nn = verts[(i + 2) % n];
+    const dn = unit(next, nn);
+    const nextIn = [next[0] - dout[0] * r, next[1] - dout[1] * r];
+    void dn;
+    const len = Math.hypot(nextIn[0] - pout[0], nextIn[1] - pout[1]);
+    const m = Math.max(0, Math.round(len / straightStep) - 1);
+    for (let k = 1; k <= m; k++) {
+      const f = k / (m + 1);
+      out.push([pout[0] + (nextIn[0] - pout[0]) * f, pout[1] + (nextIn[1] - pout[1]) * f]);
+    }
+  }
+  return out;
+}
+const GARAGE_POINTS = (() => {
+  const pts = roundedLoop(GARAGE_LOOP, GARAGE_RADIUS, 40);
+  return [...pts.slice(5), ...pts.slice(0, 5)]; // 最初の点 = 上の辺 (十字の上の腕の先端) の中ほど
+})();
 
 export const COURSES = {
   ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false },
-  garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, aisleSpacing: 390 },
+  garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
 

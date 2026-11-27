@@ -279,11 +279,10 @@ export class Renderer {
     return out;
   }
 
-  // 地下駐車場: 通路の両側の駐車車両、折り返しの柱、通路中央の線。固定の種で作るので毎回同じ
+  // 地下駐車場: 通路の両側の駐車車両と、5 番の目に並ぶ柱。固定の種で作るので毎回同じ
   _buildGarage(half, W) {
     const t = this.track;
-    const spacing = t.course.aisleSpacing || 390;
-    const depth = Math.min(125, Math.max(40, (spacing - W) / 2 - 10));
+    const depth = 110; // 駐車枠の奥行き (mm)
     const margin = 8;
     const stall = 62; // 駐車枠の幅 (mm)
     let a = 77031;
@@ -306,14 +305,17 @@ export class Renderer {
       p.lineTo(cx - ux * hu + vx * hv, cy - uy * hu + vy * hv);
       p.closePath();
     };
-    const near = Math.round(250 / t.ds);
+    const sc = t.course.scale;
+    const pillars = [];
+    for (const [px, py] of t.course.pillars || []) pillars.push(px * sc, py * sc);
+    const near = Math.round(130 / t.ds);
     const skip = Math.round(stall / t.ds);
     const off = half + margin + depth / 2;
     let count = 0;
     for (let i = 0; i < t.N; i += skip) {
       // 直線部だけ (曲がりの途中には置かない)
       let straight = true;
-      for (let d = -12; d <= 12; d += 4) {
+      for (let d = -22; d <= 22; d += 4) {
         if (Math.abs(t.kappa[(i + d + t.N) % t.N]) > 1 / 2500) {
           straight = false;
           break;
@@ -327,22 +329,19 @@ export class Renderer {
         const cy = t.y[i] + this.ny[i] * side * off;
         // 他の通路 (弧の距離が離れた中心線) までの最短距離
         let dmin = Infinity;
-        let across = false; // 真横の向こう側に、隣の通路がある
         for (let j = 0; j < t.N; j += 2) {
           let dj = Math.abs(j - i);
           dj = Math.min(dj, t.N - dj);
           if (dj < near) continue;
-          // 同じ通路の続き (この地点の中心線のほぼ真上) は、隣の通路ではない
-          const lat = Math.abs((t.x[j] - t.x[i]) * this.nx[i] + (t.y[j] - t.y[i]) * this.ny[i]);
-          if (lat < 60) continue;
           const dd = Math.hypot(t.x[j] - cx, t.y[j] - cy);
           if (dd < dmin) dmin = dd;
-          const along = Math.abs((t.x[j] - t.x[i]) * tx + (t.y[j] - t.y[i]) * ty);
-          const cross = ((t.x[j] - t.x[i]) * this.nx[i] + (t.y[j] - t.y[i]) * this.ny[i]) * side;
-          if (along < 70 && cross > spacing - 140 && cross < spacing + 140) across = true;
         }
         if (dmin < half + depth / 2 + 4) continue; // 隣の通路に重なる
-        if (!across) continue; // 隣に通路がない側 (外周の壁側) には置かない
+        let hitPillar = false;
+        for (let p = 0; p < pillars.length; p += 2) {
+          if (Math.hypot(pillars[p] - cx, pillars[p + 1] - cy) < 85) hitPillar = true;
+        }
+        if (hitPillar) continue;
         // 駐車枠の白線 (道路の端から奥へ)
         const lx = t.x[i] + this.nx[i] * side * (half + margin) + tx * (stall / 2);
         const ly = t.y[i] + this.ny[i] * side * (half + margin) + ty * (stall / 2);
@@ -363,23 +362,7 @@ export class Renderer {
         count++;
       }
     }
-    // 折り返しの柱: 曲がりの中心に置く (全体の座標は軸に平行)
-    const pillars = [];
-    for (const co of this.corners) {
-      if (co.peak < 1 / 400) continue;
-      const m = (co.i0 + Math.round((co.a + co.b) / 2)) % t.N;
-      const k = t.kappa[m];
-      const R = 1 / Math.abs(k);
-      pillars.push(t.x[m] + this.nx[m] * Math.sign(k) * R, t.y[m] + this.ny[m] * Math.sign(k) * R);
-    }
-    // 通路の中央の線 (破線)
-    const center = new Path2D();
-    for (let i = 0, first = true; i < t.N; i += PATH_STRIDE * 2, first = false) {
-      if (first) center.moveTo(t.x[i], t.y[i]);
-      else center.lineTo(t.x[i], t.y[i]);
-    }
-    center.closePath();
-    return { bodies, colors: COLORS, roofs, glass, lines, pillars, center, count, depth };
+    return { bodies, colors: COLORS, roofs, glass, lines, pillars, count, depth };
   }
 
   // 水たまり: 路面に固定した楕円 (走行方向に細長い)。固定の種で作るので毎回同じ場所
@@ -565,7 +548,7 @@ export class Renderer {
     if (rain > 0.2 && !this._overview) this._drawRain(ctx, cam, r, rain);
   }
 
-  // 地下駐車場の床: 駐車枠の線、駐車している車、通路中央の破線。柱は縁石のあとで描く (_drawPillars)
+  // 地下駐車場の床: 駐車枠の線、駐車している車。柱は縁石のあとで描く (_drawPillars)
   _drawGarageFloor(ctx, g) {
     ctx.lineCap = 'butt';
     ctx.strokeStyle = 'rgba(232,232,224,0.5)';
@@ -585,16 +568,10 @@ export class Renderer {
     ctx.fill(g.roofs);
     ctx.fillStyle = 'rgba(14,18,26,0.86)';
     ctx.fill(g.glass);
-    // 通路中央の黄色い破線
-    ctx.strokeStyle = 'rgba(232,196,64,0.62)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([26, 22]);
-    ctx.stroke(g.center);
-    ctx.setLineDash([]);
   }
 
   _drawPillars(ctx, g) {
-    const S = 46;
+    const S = 58; // 柱の一辺 (mm)
     for (let i = 0; i < g.pillars.length; i += 2) {
       const x = g.pillars[i];
       const y = g.pillars[i + 1];
