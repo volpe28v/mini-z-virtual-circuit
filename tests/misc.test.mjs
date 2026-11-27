@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Track, wrapAngle } from '../js/track.js';
 import { Vehicle } from '../js/vehicle.js';
-import { cameraMatrix, worldToScreen, viewRadiusMm } from '../js/camera.js';
+import { cameraMatrix, worldToScreen, viewRadiusMm, carGeometry } from '../js/camera.js';
 import { simulateMarks } from '../js/marks.js';
 import { defaults, sanitize, loadSettings, saveSettings, guessPxPerMm, SCHEMA, STORAGE_KEY } from '../js/settings.js';
 
@@ -115,4 +115,26 @@ test('タイヤ痕: ドリフト区間にだけ出て、3 段階の濃さがあ�
   // ドリフト無効なら痕は出ない
   const none = simulateMarks(track, { ...defaults(), maxDrift: 0 });
   assert.equal(none.buckets.reduce((n, b) => n + b.length, 0), 0);
+});
+
+test('デバッグ表示の車輪: 車両の長さ・幅に比例し、車体の中に収まる', () => {
+  const base = carGeometry(150, 70);
+  assert.ok(Math.abs(base.wheelbase - 95) < 1e-9 && Math.abs(base.track - 55) < 1e-9);
+  // 長さを 2 倍にするとホイールベースとタイヤの直径が 2 倍、幅は変わらない
+  const longer = carGeometry(300, 70);
+  assert.ok(Math.abs(longer.wheelbase - 190) < 1e-9 && Math.abs(longer.wheelH - 24) < 1e-9);
+  assert.equal(longer.track, base.track);
+  assert.equal(longer.wheelW, base.wheelW);
+  // 幅を 2 倍にするとトレッドとタイヤの幅が 2 倍、長さ方向は変わらない
+  const wider = carGeometry(150, 140);
+  assert.ok(Math.abs(wider.track - 110) < 1e-9 && Math.abs(wider.wheelW - 12) < 1e-9);
+  assert.equal(wider.wheelbase, base.wheelbase);
+  // 設定の範囲全体で、タイヤが車体の外にはみ出さない
+  for (const L of [100, 150, 220]) {
+    for (const W of [50, 70, 100]) {
+      const g = carGeometry(L, W);
+      assert.ok(g.track / 2 + g.wheelW / 2 <= W / 2, `L=${L} W=${W} 幅方向`);
+      assert.ok(g.wheelbase / 2 + g.wheelH / 2 <= L / 2, `L=${L} W=${W} 長さ方向`);
+    }
+  }
 });

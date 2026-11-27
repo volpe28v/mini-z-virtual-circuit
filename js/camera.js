@@ -28,3 +28,14 @@ export function viewRadiusMm(cam, width, height) {
   const dy = Math.max(cam.ay, height - cam.ay);
   return Math.hypot(dx, dy) / cam.k;
 }
+
+// デバッグ表示の車輪の配置。車両の長さ・幅 (mm) に比例させる。
+// 基準は長さ 150mm / 幅 70mm の車体で、ホイールベース 95mm、トレッド 55mm、タイヤ 6×12mm。
+export function carGeometry(length, width) {
+  return {
+    wheelbase: (length * 95) / 150, // 前後の車輪の間隔
+    track: (width * 55) / 70, // 左右の車輪の間隔
+    wheelW: (width * 6) / 70, // タイヤの幅
+    wheelH: (length * 12) / 150, // タイヤの直径
+  };
+}

@@ -1,5 +1,5 @@
 // ワールド描画。パス (路面・縁石・ランオフ・白線・タイヤ痕) は設定変更時にだけ組み立て、毎フレームは塗るだけ。
-import { cameraMatrix, viewRadiusMm } from './camera.js';
+import { cameraMatrix, viewRadiusMm, carGeometry } from './camera.js';
 import { simulateMarks } from './marks.js';
 import { TILE_MM } from './textures.js';
 
@@ -323,12 +323,15 @@ export class Renderer {
     ctx.rect(-Wd / 2, -L / 2, Wd, L);
     ctx.fill();
     ctx.stroke();
-    // ホイールベース 95mm、トレッド 55mm
-    const wx = 27.5 * k;
-    const wy = 47.5 * k;
+    // 車輪は車両の長さ・幅の設定に追従する
+    const g = carGeometry(st.carLength, st.carWidth);
+    const wx = (g.track / 2) * k;
+    const wy = (g.wheelbase / 2) * k;
+    const tw = g.wheelW * k;
+    const th = g.wheelH * k;
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     for (const sx of [-1, 1]) {
-      for (const sy of [-1, 1]) ctx.strokeRect(sx * wx - 3 * k, sy * wy - 6 * k, 6 * k, 12 * k);
+      for (const sy of [-1, 1]) ctx.strokeRect(sx * wx - tw / 2, sy * wy - th / 2, tw, th);
     }
     // 車体の前方 (上)
     ctx.beginPath();
