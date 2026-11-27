@@ -38,7 +38,7 @@ function scheduleRebuild() {
   clearTimeout(rebuildTimer);
   rebuildTimer = setTimeout(() => renderer.buildWorld(settings), 150);
 }
-const REBUILD_KEYS = new Set(['speed', 'maxDrift', 'driftStrength', 'trackWidth']);
+const REBUILD_KEYS = new Set(['speed', 'maxDrift', 'driftStrength', 'trackWidth', 'carLength', 'carWidth']);
 
 function applyBrightness() {
   canvas.style.filter = settings.brightness === 1 ? '' : `brightness(${settings.brightness})`;

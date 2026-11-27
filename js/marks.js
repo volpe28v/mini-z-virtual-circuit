@@ -1,8 +1,7 @@
 // タイヤ痕の事前計算。車両ロジックそのものを基準走行として回し、ドリフト中の後輪位置を記録する。
 import { Vehicle } from './vehicle.js';
+import { carGeometry } from './camera.js';
 
-const WHEELBASE = 95; // mm
-const TRACK_WIDTH_CAR = 52; // mm (左右の輪の間隔)
 const LAPS = [
   { scale: 0.88, bias: -6 },
   { scale: 1.0, bias: 3 },
@@ -20,6 +19,8 @@ export function simulateMarks(track, settings) {
   const maxAngle = Math.max(1e-6, (st.maxDrift * Math.PI) / 180);
   const buckets = [[], [], []];
   const rubber = [];
+  // 後輪の位置は、設定の車両の長さ・幅に追従する (デバッグ表示の車輪と同じ配置)
+  const geom = carGeometry(st.carLength, st.carWidth);
 
   for (const lap of LAPS) {
     veh.reset(0);
@@ -40,8 +41,8 @@ export function simulateMarks(track, settings) {
       for (let i = 0; i < BUCKET_EDGES.length; i++) if (ratio >= BUCKET_EDGES[i]) b = i;
       for (let w = 0; w < 2; w++) {
         const side = w === 0 ? -1 : 1;
-        const px = veh.position.x - fx * (WHEELBASE / 2) + rx * side * (TRACK_WIDTH_CAR / 2);
-        const py = veh.position.y - fy * (WHEELBASE / 2) + ry * side * (TRACK_WIDTH_CAR / 2);
+        const px = veh.position.x - fx * (geom.wheelbase / 2) + rx * side * (geom.track / 2);
+        const py = veh.position.y - fy * (geom.wheelbase / 2) + ry * side * (geom.track / 2);
         const c = cur[w];
         if (b < 0) {
           if (c) {

@@ -138,3 +138,34 @@ test('デバッグ表示の車輪: 車両の長さ・幅に比例し、車体の
     }
   }
 });
+
+test('タイヤ痕: 車両の幅・長さの設定に追従する (幅が広いほど痕が中心線から離れる)', () => {
+  const track = new Track();
+  const meanOffset = (st) => {
+    const m = simulateMarks(track, st);
+    let sum = 0;
+    let n = 0;
+    for (const b of m.buckets) for (const pl of b) {
+      for (let i = 0; i < pl.length; i += 6) {
+        let best = Infinity;
+        for (let j = 0; j < track.N; j += 3) best = Math.min(best, Math.hypot(pl[i] - track.x[j], pl[i + 1] - track.y[j]));
+        sum += best;
+        n++;
+      }
+    }
+    return sum / n;
+  };
+  const narrow = meanOffset({ ...defaults(), carWidth: 50 });
+  const wide = meanOffset({ ...defaults(), carWidth: 100 });
+  assert.ok(wide > narrow + 5, `wide=${wide} narrow=${narrow}`);
+  // 長さが違うと (後輪の位置が変わるので) 痕の形も変わる
+  const a = simulateMarks(track, { ...defaults(), carLength: 100 });
+  const b = simulateMarks(track, { ...defaults(), carLength: 220 });
+  assert.notDeepEqual(a.buckets[2][0].slice(0, 6), b.buckets[2][0].slice(0, 6));
+});
+
+test('車両の長さ・幅は、変更でタイヤ痕の再生成が必要な設定', () => {
+  for (const key of ['carLength', 'carWidth']) {
+    assert.equal(SCHEMA.find((s) => s.key === key).rebuild, true);
+  }
+});
