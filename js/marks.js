@@ -11,7 +11,7 @@ const LAPS = [
 // 戻り値: 走行ライン中心のポリライン [x0,y0,x1,y1,...]
 export function simulateRubber(track, settings) {
   const veh = new Vehicle(track);
-  const st = { ...settings };
+  const st = { ...settings, wander: 0 }; // ラバーラインは、ふらつきのない基準のライン
   const dt = 1 / 120;
   const rubber = [];
   for (const lap of LAPS) {

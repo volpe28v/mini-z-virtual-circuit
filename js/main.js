@@ -43,7 +43,7 @@ function scheduleRebuild() {
   rebuildTimer = setTimeout(() => renderer.buildWorld(settings), 150);
 }
 // ラバーライン (走行ラインの黒ずみ) の作り直しが必要な設定。タイヤ痕は走行中に記録するので対象外
-const REBUILD_KEYS = new Set(['speed', 'maxDrift', 'driftStrength', 'feint', 'carry', 'trackWidth']);
+const REBUILD_KEYS = new Set(['speed', 'maxDrift', 'driftStrength', 'feint', 'carry', 'wander', 'trackWidth']);
 
 function applyBrightness() {
   canvas.style.filter = settings.brightness === 1 ? '' : `brightness(${settings.brightness})`;

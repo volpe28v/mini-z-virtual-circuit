@@ -16,6 +16,7 @@ export const SCHEMA = [
   { key: 'carX', label: '車両位置 X', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.5, percent: true },
   { key: 'carY', label: '車両位置 Y', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.6, percent: true },
   { key: 'brightness', label: '路面の明るさ', unit: '', min: 0.5, max: 1.5, step: 0.01, def: 1 },
+  { key: 'wander', label: 'ライン取りのふらつき', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'carry', label: '引きずり (コーナー後の余韻)', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'feint', label: 'フェイント (振り出し)', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'smoke', label: 'タイヤスモーク', unit: '', min: 0, max: 3, step: 0.05, def: 1 },

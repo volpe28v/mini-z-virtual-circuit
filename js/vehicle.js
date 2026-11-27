@@ -15,6 +15,28 @@ function smoothstep(a, b, x) {
   return t * t * (3 - 2 * t);
 }
 
+// 位置 s (走行距離) のなめらかな乱数 (-1〜1)。格子点ごとの値をコサインで補間する。同じ s なら同じ値 (再現できる)
+function hash01(i) {
+  let t = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
+  t ^= t >>> 13;
+  t = Math.imul(t, 0xc2b2ae35);
+  t ^= t >>> 16;
+  return (t >>> 0) / 4294967296;
+}
+function smoothNoise(s, wavelength, seed) {
+  const x = s / wavelength;
+  const i = Math.floor(x);
+  const f = x - i;
+  const a = hash01(i * 7919 + seed) * 2 - 1;
+  const b = hash01((i + 1) * 7919 + seed) * 2 - 1;
+  const t = (1 - Math.cos(Math.PI * f)) / 2;
+  return a + (b - a) * t;
+}
+// 走行ラインのふらつき: 長い波と短い波を重ねる。走行距離で決めるので、周ごとに違うラインになる
+export function wanderAt(s) {
+  return (smoothNoise(s, 800, 11) + 0.45 * smoothNoise(s, 320, 53)) / 1.45;
+}
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -150,11 +172,17 @@ export class Vehicle {
     this.driftAngle = Math.min(lim, Math.max(-lim, this.driftAngle));
 
     // 横オフセット: ドリフト中にコーナーの外側へ膨らむ
-    const oTarget =
+    // ライン取りのふらつき: 道幅の中で左右にゆるやかに動く。コーナーの中では控えめ (ドリフトの外への膨らみが主役)
+    const wander = Math.min(2, Math.max(0, st.wander ?? 0));
+    const wTarget = wander * 0.3 * st.trackWidth * wanderAt(this.progress) * (1 - 0.6 * g0);
+    let oTarget =
       -Math.sign(this._hold) * Math.min(1, Math.abs(this._hold) / Math.max(1e-6, maxD * 0.8)) * 0.14 * st.trackWidth * Math.min(1, strength) +
       // フェイント中は、車体を振った側 (コーナーの外側) へ少し寄る
       -(this._feintDir || 0) * this._feintW * 0.06 * st.trackWidth * Math.min(1, feint) +
-      this.offsetBias;
+      this.offsetBias +
+      wTarget;
+    const oLim = 0.36 * st.trackWidth; // 車体が道幅から大きくはみ出さないよう、目標を丸める
+    oTarget = Math.min(oLim, Math.max(-oLim, oTarget));
     const oOmega = 2.5;
     const oAcc = oOmega * oOmega * (oTarget - this.offset) - 2 * oOmega * this.offsetRate;
     this.offsetRate += oAcc * dt;

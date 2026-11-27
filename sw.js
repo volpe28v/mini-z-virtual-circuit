@@ -1,6 +1,6 @@
 // Service Worker: 初回読み込み後はオフラインでも動く。配置ディレクトリがスコープになる。
 // ファイル構成を変えたら ASSETS を更新し、CACHE のバージョンを上げる。
-const CACHE = 'mzvc-v9';
+const CACHE = 'mzvc-v10';
 const ASSETS = [
   './',
   'index.html',

@@ -148,7 +148,7 @@ test('reset() で全部消え、version が変わる', () => {
 
 test('周ごとの変化 (lapVariation): 周ごとに軌跡がずれ、痕が 1 本に重ならない。ずれは小さい', () => {
   const run = (variation) => {
-    const st = defaults();
+    const st = { ...defaults(), wander: variation ? 1 : 0 }; // 変化なしの側は、ふらつきも無し
     const sk = new SkidMarks(track.length);
     const v = new Vehicle(track);
     v.lapVariation = variation;

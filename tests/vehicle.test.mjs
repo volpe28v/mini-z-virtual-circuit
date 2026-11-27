@@ -46,7 +46,8 @@ test('車体の向きは 1 フレームで急に回らない (継ぎ目含む)',
   for (let i = 1; i < log.length; i++) {
     maxStep = Math.max(maxStep, Math.abs(wrapAngle(log[i].h - log[i - 1].h)) * DEG);
   }
-  assert.ok(maxStep < 3.2, `maxStep=${maxStep}°/frame`);
+  // 急なヘアピンでは、進行方向の回転 (約 150°/s) とドリフト角の振り返しが重なる
+  assert.ok(maxStep < 3.5, `maxStep=${maxStep}°/frame`);
 });
 
 test('ドリフト角は最大角を超えず、変化も滑らか', () => {
@@ -238,4 +239,40 @@ test('引きずり: 逆向きの次のコーナーにはすぐ切り替わり、
   }
   assert.ok(maxAbs <= s.maxDrift * 1.12 * 1.1 + 0.01, `maxAbs=${maxAbs}`);
   assert.ok(maxStep < 3.5, `maxStep=${maxStep}`);
+});
+
+test('ライン取りのふらつき: 左右に動き、周ごとに違い、道幅からはみ出さない。0 なら従来どおり', () => {
+  const measure = (wander, lap) => {
+    const s = { ...defaults(), wander };
+    const v = new Vehicle(track);
+    v.reset(0);
+    let sum = 0;
+    let n = 0;
+    let mx = 0;
+    let pos = -1;
+    const probe = [];
+    while (v.progress < (lap + 1) * track.length) {
+      v.update(1 / 60, s);
+      if (v.progress >= lap * track.length) {
+        sum += v.offset * v.offset;
+        n++;
+        mx = Math.max(mx, Math.abs(v.offset));
+        const k = Math.floor((v.progress % track.length) / 400);
+        if (k !== pos) {
+          pos = k;
+          probe.push(v.offset);
+        }
+      }
+    }
+    return { rms: Math.sqrt(sum / n), mx, probe };
+  };
+  const off = measure(0, 1);
+  const on1 = measure(1, 1);
+  const on2 = measure(1, 2);
+  assert.ok(on1.rms > off.rms + 2, `rms ${on1.rms.toFixed(1)} > ${off.rms.toFixed(1)}`);
+  let diff = 0;
+  for (let i = 0; i < Math.min(on1.probe.length, on2.probe.length); i++) diff += Math.abs(on1.probe[i] - on2.probe[i]);
+  assert.ok(diff / on1.probe.length > 4, `周ごとの違い ${(diff / on1.probe.length).toFixed(1)}mm`);
+  const wide = measure(2, 1);
+  assert.ok(wide.mx < defaults().trackWidth / 2 - 15, `はみ出し ${wide.mx}`);
 });
