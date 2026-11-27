@@ -2,7 +2,7 @@
 // 粒はワールド座標に固定され、車が進むと路面の上に尾を引いて残る。リングバッファで固定長 (毎フレームの確保なし)。
 import { carGeometry } from './camera.js';
 
-export const MAX_PARTICLES = 300;
+export const MAX_PARTICLES = 450;
 export const MAX_AMOUNT = 3; // 設定「タイヤスモーク」の上限
 const MAX_ALPHA = 0.85; // 1 粒の不透明度の上限 (重なりで濃くなる)
 const DEG = 180 / Math.PI;
@@ -17,6 +17,11 @@ function mulberry32(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function smoothstep(a, b, x) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 function clamp(v, lo, hi) {
@@ -38,12 +43,19 @@ export class SmokeSystem {
     this.a0 = new Float32Array(n); // 不透明度の最大値
     this.head = 0;
     this.acc = [0, 0]; // 左右の後輪の発生タイマー
+    this.driftTime = 0; // ドリフトが続いている時間 (秒)。コーナーの間のわずかな中断では急に 0 に戻らない
+    this.flow = [1, 1]; // 左右の後輪ごとの出方のむら (平均 1)
+    this.flowTarget = [1, 1];
+    this.flowTimer = 0;
+    this.puff = 0; // 一気に濃く出るふかし (0〜1)
     this.rng = mulberry32(seed);
   }
 
   reset() {
     this.life.fill(0);
     this.acc[0] = this.acc[1] = 0;
+    this.driftTime = 0;
+    this.puff = 0;
   }
 
   alive(i) {
@@ -77,6 +89,7 @@ export class SmokeSystem {
     const amount = st.smoke;
     if (!(amount > 0) || !(st.maxDrift > 0)) {
       this.acc[0] = this.acc[1] = 0;
+      this.driftTime = 0;
       return;
     }
     // 角度がしきい値 (既定 15°、最大角が小さいときはその半分) を超えたら出す
@@ -84,13 +97,19 @@ export class SmokeSystem {
     const thr = Math.min(15, st.maxDrift * 0.5);
     if (beta < thr) {
       this.acc[0] = this.acc[1] = 0;
+      this.driftTime *= Math.exp(-dt / 0.5); // 抜けたら余韻なく戻る (すぐ次のコーナーなら少し持ち越す)
       return;
     }
+    this.driftTime += dt;
+    this._wobble(dt);
     // 強さ 0〜1: ドリフトが深いほど、速いほど強い
     const depth = clamp((beta - thr) / Math.max(1, st.maxDrift - thr), 0, 1);
     const speedF = 0.6 + 0.4 * clamp(veh.speed / Math.max(1, st.speed * 0.6), 0, 1);
     const i = depth * speedF;
-    const rate = Math.min(MAX_AMOUNT, amount) * (10 + 30 * i); // 1 輪あたりの粒数/秒
+    // ドリフトが長く続くほどタイヤが温まって煙が増える (0.65 倍 → 約 1.6 倍。1.5 秒で頭打ち)
+    const durF = 0.65 + 0.95 * smoothstep(0, 1.5, this.driftTime);
+    this.durF = durF;
+    const base = Math.min(MAX_AMOUNT, amount) * (10 + 30 * i) * durF; // 1 輪あたりの粒数/秒
 
     const g = carGeometry(st.carLength, st.carWidth);
     const h = veh.heading;
@@ -100,12 +119,29 @@ export class SmokeSystem {
     const ry = fx;
     for (let w = 0; w < 2; w++) {
       const side = w === 0 ? -1 : 1;
-      this.acc[w] += rate * dt;
+      // 出方のむら + ときどきのふかし (どちらも平均はほぼ 1 倍)
+      this.acc[w] += base * this.flow[w] * (1 + 1.6 * this.puff) * dt;
       while (this.acc[w] >= 1) {
         this.acc[w] -= 1;
         this._spawn(veh, side, fx, fy, rx, ry, g, i, amount, dt);
       }
     }
+  }
+
+  // 出方のむらを、時間で進める。0.08〜0.25 秒ごとに目標を引き直してなめらかに追う (フレームレートによらない)
+  _wobble(dt) {
+    const rnd = this.rng;
+    this.flowTimer -= dt;
+    while (this.flowTimer <= 0) {
+      this.flowTimer += 0.08 + rnd() * 0.17;
+      this.flowTarget[0] = 0.4 + 1.2 * rnd();
+      this.flowTarget[1] = 0.4 + 1.2 * rnd();
+      if (rnd() < 0.18) this.puff = 1; // ふかし
+    }
+    const f = 1 - Math.exp(-dt / 0.07);
+    this.flow[0] += (this.flowTarget[0] - this.flow[0]) * f;
+    this.flow[1] += (this.flowTarget[1] - this.flow[1]) * f;
+    this.puff *= Math.exp(-dt / 0.12);
   }
 
   _spawn(veh, side, fx, fy, rx, ry, g, i, amount, dt) {
@@ -123,10 +159,10 @@ export class SmokeSystem {
     this.vx[k] = veh.velocity.x * CARRY + rx * side * out + (rnd() - 0.5) * 14;
     this.vy[k] = veh.velocity.y * CARRY + ry * side * out + (rnd() - 0.5) * 14;
     this.age[k] = 0;
-    this.life[k] = 0.9 + rnd() * 0.7 + 0.3 * i;
+    this.life[k] = (0.9 + rnd() * 0.9 + 0.3 * i) * (0.85 + 0.15 * (this.durF || 1));
     this.r0[k] = 5 + rnd() * 3;
-    this.r1[k] = 17 + rnd() * 8 + 10 * i;
-    this.a0[k] = Math.min(MAX_ALPHA, (0.3 + 0.3 * i) * Math.min(MAX_AMOUNT, amount));
+    this.r1[k] = (17 + rnd() * 14 + 10 * i) * (0.9 + 0.2 * (this.durF || 1));
+    this.a0[k] = Math.min(MAX_ALPHA, (0.3 + 0.3 * i) * (0.8 + 0.4 * rnd()) * Math.min(MAX_AMOUNT, amount));
   }
 }
 

@@ -131,16 +131,17 @@ test('粒は寿命で消え、大きくなりながら薄くなる。上限を�
 
 test('フレームレート (30 / 60 / 120fps) によらず発生量はほぼ同じ', () => {
   const st = defaults();
+  // 出方にはランダムなむらがあるので、種を変えて合計で比べる
   const total = (fps) => {
-    const s = new SmokeSystem();
     let spawned = 0;
-    const before = new Float32Array(s.cap);
-    for (let i = 0; i < 4 * fps; i++) {
-      const h0 = s.head;
-      s.update(1 / fps, fakeVeh(30), st);
-      spawned += (s.head - h0 + s.cap) % s.cap;
+    for (let seed = 1; seed <= 16; seed++) {
+      const s = new SmokeSystem(seed);
+      for (let i = 0; i < 4 * fps; i++) {
+        const h0 = s.head;
+        s.update(1 / fps, fakeVeh(30), st);
+        spawned += (s.head - h0 + s.cap) % s.cap;
+      }
     }
-    void before;
     return spawned;
   };
   const a = total(30);
@@ -180,12 +181,12 @@ test('同じ種 (seed) なら同じ煙 (再現性)', () => {
 });
 
 test('量を上げるほど増える (上限 3 まで)。粒数と不透明度は上限内', () => {
-  const run = (amount) => {
+  const run = (amount, deg = 35) => {
     const s = new SmokeSystem();
     let peak = 0;
     let maxA = 0;
     for (let i = 0; i < 600; i++) {
-      s.update(1 / 60, fakeVeh(35), { ...defaults(), smoke: amount });
+      s.update(1 / 60, fakeVeh(deg), { ...defaults(), smoke: amount });
       peak = Math.max(peak, s.count);
       for (let k = 0; k < s.cap; k++) if (s.alive(k)) maxA = Math.max(maxA, s.a0[k]);
     }
@@ -194,11 +195,65 @@ test('量を上げるほど増える (上限 3 まで)。粒数と不透明度�
   const r1 = run(1);
   const r15 = run(1.5);
   const r3 = run(3);
-  assert.ok(r15.peak > r1.peak, `${r15.peak} ${r1.peak}`);
-  assert.ok(r3.peak > r15.peak * 1.3, `量 3 は 1.5 よりはっきり多い: ${r3.peak} ${r15.peak}`);
+  // 粒数の比較は、上限 (MAX_PARTICLES) に張り付かない浅めのドリフトで行う
+  const m1 = run(1, 18).peak;
+  const m15 = run(1.5, 18).peak;
+  const m3 = run(3, 18).peak;
+  assert.ok(m15 > m1, `${m15} ${m1}`);
+  assert.ok(m3 > m15 * 1.3, `量 3 は 1.5 よりはっきり多い: ${m3} ${m15}`);
   assert.ok(r3.peak <= MAX_PARTICLES);
   assert.ok(r3.maxA <= 0.85 + 1e-6 && r3.maxA >= r15.maxA); // 最深のドリフトでは 1.5 の時点で上限 (0.85) に達する
   // 上限を超える値を入れても、上限 (3) と同じ
   assert.equal(run(5).peak, r3.peak);
   assert.equal(MAX_AMOUNT, 3);
+});
+
+test('ドリフトが長く続くほど煙が増える', () => {
+  const st = defaults();
+  const rate = (seconds) => {
+    let spawned = 0;
+    for (let seed = 1; seed <= 16; seed++) {
+      const s = new SmokeSystem(seed);
+      const dt = 1 / 60;
+      for (let i = 0; i < seconds * 60; i++) s.update(dt, fakeVeh(30), st); // 助走
+      for (let i = 0; i < 60; i++) {
+        const h0 = s.head;
+        s.update(dt, fakeVeh(30), st);
+        spawned += (s.head - h0 + s.cap) % s.cap;
+      }
+    }
+    return spawned;
+  };
+  const start = rate(0);
+  const long = rate(2);
+  assert.ok(long > start * 1.5, `始め ${start} → 2 秒後 ${long}`);
+});
+
+test('煙の出方にランダムなむらがある (時間ごとの量が一定でない)。種が同じなら再現する', () => {
+  const st = defaults();
+  const bins = (seed) => {
+    const s = new SmokeSystem(seed);
+    const out = [];
+    for (let b = 0; b < 20; b++) {
+      let n = 0;
+      for (let i = 0; i < 12; i++) {
+        const h0 = s.head;
+        s.update(1 / 60, fakeVeh(30), st);
+        n += (s.head - h0 + s.cap) % s.cap;
+      }
+      out.push(n);
+    }
+    return out.slice(10); // 立ち上がり後
+  };
+  const a = bins(3);
+  assert.ok(Math.max(...a) - Math.min(...a) >= 3, `むらが小さい: ${a}`);
+  assert.deepEqual(bins(3), a);
+});
+
+test('ドリフトが終われば持ち越した時間は消える', () => {
+  const s = new SmokeSystem();
+  for (let i = 0; i < 180; i++) s.update(1 / 60, fakeVeh(30), defaults());
+  assert.ok(s.driftTime > 2.5);
+  for (let i = 0; i < 300; i++) s.update(1 / 60, fakeVeh(0), defaults());
+  assert.ok(s.driftTime < 0.05);
 });
