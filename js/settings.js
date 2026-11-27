@@ -2,8 +2,9 @@
 
 export const STORAGE_KEY = 'mzvc.settings.v1';
 // 既定値を変えたときに上げる。旧バージョンで保存された「旧既定値のまま」の項目だけ新既定値へ移行する
-export const SETTINGS_VERSION = 2;
-const MIGRATIONS = [{ key: 'trackWidth', from: 90, since: 2 }]; // v2: コース幅 90 → 108mm (+20%)
+export const SETTINGS_VERSION = 3;
+// v2: コース幅 90 → 108mm (+20%)、v3: 108 → 119mm (さらに +10%)
+const MIGRATIONS = [{ key: 'trackWidth', from: [90, 108], since: 3 }];
 
 // rebuild: true の項目は、タイヤ痕などワールドの再生成が必要
 export const SCHEMA = [
@@ -11,7 +12,7 @@ export const SCHEMA = [
   { key: 'maxDrift', label: '最大ドリフト角度', unit: '°', min: 0, max: 60, step: 1, def: 35, rebuild: true },
   { key: 'driftStrength', label: 'ドリフト強度', unit: '', min: 0, max: 2, step: 0.05, def: 1, rebuild: true },
   { key: 'courseScale', label: 'コーススケール', unit: '×', min: 0.5, max: 2, step: 0.01, def: 1 },
-  { key: 'trackWidth', label: 'コース幅', unit: 'mm', min: 60, max: 180, step: 1, def: 108, rebuild: true },
+  { key: 'trackWidth', label: 'コース幅', unit: 'mm', min: 60, max: 180, step: 1, def: 119, rebuild: true },
   { key: 'carX', label: '車両位置 X', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.5, percent: true },
   { key: 'carY', label: '車両位置 Y', unit: '%', min: 0.1, max: 0.9, step: 0.01, def: 0.6, percent: true },
   { key: 'brightness', label: '路面の明るさ', unit: '', min: 0.5, max: 1.5, step: 0.01, def: 1 },
@@ -63,7 +64,7 @@ export function sanitize(raw, env = {}) {
   // 旧バージョンの保存値が旧既定値のままなら、新しい既定値を使う
   const savedVersion = typeof raw.version === 'number' ? raw.version : 1;
   for (const m of MIGRATIONS) {
-    if (savedVersion < m.since && raw[m.key] === m.from) out[m.key] = d[m.key];
+    if (savedVersion < m.since && m.from.includes(raw[m.key])) out[m.key] = d[m.key];
   }
   const p = raw.pxPerMm;
   if (typeof p === 'number' && Number.isFinite(p)) {

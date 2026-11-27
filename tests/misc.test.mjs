@@ -29,11 +29,12 @@ test('設定: 不正値は範囲に収めるか既定に戻す', () => {
   assert.deepEqual(sanitize(null), defaults());
 });
 
-test('設定: コース幅の既定は 108mm (旧 90mm の +20%)。旧既定のまま保存された値は移行する', () => {
-  assert.equal(defaults().trackWidth, 108);
-  assert.equal(sanitize({ trackWidth: 90 }).trackWidth, 108); // 旧バージョン (version なし) で既定のまま
+test('設定: コース幅の既定は 119mm。旧既定 (90 / 108mm) のまま保存された値は移行する', () => {
+  assert.equal(defaults().trackWidth, 119);
+  assert.equal(sanitize({ trackWidth: 90 }).trackWidth, 119); // v1 で既定のまま
+  assert.equal(sanitize({ version: 2, trackWidth: 108 }).trackWidth, 119); // v2 で既定のまま
   assert.equal(sanitize({ trackWidth: 100 }).trackWidth, 100); // 自分で変えた値は残す
-  assert.equal(sanitize({ version: 2, trackWidth: 90 }).trackWidth, 90); // 新バージョンで 90 を選んだ場合は残す
+  assert.equal(sanitize({ version: 3, trackWidth: 108 }).trackWidth, 108); // 新バージョンで 108 を選んだ場合は残す
   assert.equal(sanitize({ trackWidth: 999 }).trackWidth, 180);
 });
 
