@@ -8,6 +8,8 @@ const KERB_W = 18; // 縁石の幅 (mm)
 const KERB_QUAD = 7; // 縁石 1 区画 = 7 サンプル (約 28mm)
 const CORNER_K = 1 / 650; // この曲率より急な区間をコーナーとみなす
 const RUNOFF_W = 55; // ランオフの最大幅 (mm)
+const TUNNEL_WALL = 16; // トンネルの側壁の見える幅 (mm)
+const TUNNEL_ROOF = 300; // 側壁の外側の、トンネルの上の構造物 (mm)
 const PATH_STRIDE = 2; // 路面パスのサンプル間隔 (8mm)
 
 export class Renderer {
@@ -256,8 +258,132 @@ export class Renderer {
     const puddles = this._buildPuddles(half);
     const lamps = this._buildLamps(half);
     const garage = this.theme === 'garage' ? this._buildGarage(half, W) : null;
-    this.world = { W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
+    const tunnels = this._buildTunnels(half);
+    this.world = { tunnels, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
     this.buildMarks(st);
+  }
+
+  // トンネル: 側壁、その外側 (上の構造物)、床の陰、継ぎ目、天井の照明の列、入口・出口の枠
+  _buildTunnels(half) {
+    const t = this.track;
+    const out = [];
+    const strip = (p, a, b, d0, d1) => {
+      for (let i = a; i <= b; i++) this._off(p, i, d0, i === a);
+      for (let i = b; i >= a; i--) this._off(p, i, d1, false);
+      p.closePath();
+    };
+    for (const tu of t.tunnels) {
+      const a = tu.i0;
+      const b = tu.i1;
+      const o = { wall: new Path2D(), roof: new Path2D(), shade: new Path2D(), edgeShade: new Path2D(), joints: new Path2D(), seams: new Path2D(), bars: new Path2D(), portals: new Path2D(), pts: [] };
+      const w1 = half + TUNNEL_WALL;
+      const w2 = w1 + TUNNEL_ROOF;
+      strip(o.shade, a, b, -half, half);
+      for (const side of [-1, 1]) {
+        strip(o.wall, a, b, side * half, side * w1);
+        strip(o.roof, a, b, side * w1, side * w2);
+        strip(o.edgeShade, a, b, side * (half - 12), side * half);
+      }
+      // 上の構造物の継ぎ目 (約 220mm ごと) と、天井の照明の列 (約 380mm ごと)
+      const jStep = Math.round(220 / t.ds);
+      for (let i = a + jStep; i < b; i += jStep) {
+        for (const side of [-1, 1]) {
+          this._off(o.joints, i, side * w1, true);
+          this._off(o.joints, i, side * w2, false);
+        }
+      }
+      // 側壁のパネルの継ぎ目 (約 90mm ごと)
+      const sStep = Math.round(90 / t.ds);
+      for (let i = a + sStep; i < b; i += sStep) {
+        for (const side of [-1, 1]) {
+          this._off(o.seams, i, side * half, true);
+          this._off(o.seams, i, side * w1, false);
+        }
+      }
+      const bStep = Math.round(380 / t.ds);
+      for (let i = a + Math.round(bStep / 2); i < b - 10; i += bStep) {
+        this._off(o.bars, i, -half + 4, true);
+        this._off(o.bars, i, half - 4, false);
+      }
+      // 入口・出口の枠 (厚み 40mm)
+      const pl = Math.round(40 / t.ds);
+      strip(o.portals, a, a + pl, -w2, w2);
+      strip(o.portals, b - pl, b, -w2, w2);
+      for (let i = a; i <= b; i += Math.round(40 / t.ds)) o.pts.push(t.x[i], t.y[i]);
+      o.reach = half + TUNNEL_WALL;
+      out.push(o);
+    }
+    return out;
+  }
+
+  // トンネルの中か (雨の波紋を消すために使う)
+  _inTunnel(x, y) {
+    for (const tu of this.world.tunnels) {
+      const R2 = tu.reach * tu.reach;
+      for (let i = 0; i < tu.pts.length; i += 2) {
+        const dx = x - tu.pts[i];
+        const dy = y - tu.pts[i + 1];
+        if (dx * dx + dy * dy < R2) return true;
+      }
+    }
+    return false;
+  }
+
+  // トンネルの見た目 (路面の上に重ねる): 床の陰 → 上の構造物 (コンクリート) → 側壁 → 入口・出口の枠
+  _drawTunnels(ctx, P) {
+    for (const tu of this.world.tunnels) {
+      ctx.fillStyle = 'rgba(2,4,12,0.34)';
+      ctx.fill(tu.shade);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fill(tu.edgeShade, 'nonzero');
+      // 上の構造物: 暗いコンクリートに継ぎ目
+      ctx.fillStyle = P.concreteDark;
+      ctx.fill(tu.roof, 'nonzero');
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fill(tu.roof, 'nonzero');
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke(tu.joints);
+      // 側壁: 明るめのコンクリートの面 (上から見ると細い帯) と、立体感の縁
+      ctx.fillStyle = '#7b7d82';
+      ctx.fill(tu.wall, 'nonzero');
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 0.9;
+      ctx.stroke(tu.seams);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke(tu.wall);
+      // 入口・出口の枠
+      ctx.fillStyle = '#9b9a93';
+      ctx.fill(tu.portals, 'nonzero');
+      ctx.strokeStyle = 'rgba(20,20,22,0.7)';
+      ctx.lineWidth = 2;
+      ctx.stroke(tu.portals);
+    }
+  }
+
+  // トンネルの天井の照明: 夜の暗さの上に、加算で光らせる。細い明るい線の周りに、幅の違う弱い線を重ねてなめらかに広げる
+  _drawTunnelLights(ctx, m) {
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'butt';
+    const layers = [
+      [64, 0.025, '255,170,80'],
+      [44, 0.03, '255,176,90'],
+      [28, 0.04, '255,186,100'],
+      [14, 0.06, '255,200,120'],
+      [6, 0.12, '255,226,170'],
+      [1.8, 0.8, '255,244,210'],
+    ];
+    for (const tu of this.world.tunnels) {
+      for (const [w, a, c] of layers) {
+        ctx.strokeStyle = `rgba(${c},${a})`;
+        ctx.lineWidth = w;
+        ctx.stroke(tu.bars);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // 街灯: コースの外側に、左右交互に一定間隔で置く (夜の光だまり用)。[x0, y0, x1, y1, ...]
@@ -272,6 +398,7 @@ export class Renderer {
     }
     const step = Math.round(520 / t.ds);
     for (let i = 0, n = 0; i < t.N; i += step, n++) {
+      if (t.tunnels.some((tu) => i >= tu.i0 && i <= tu.i1)) continue; // トンネルの中は天井の照明
       const side = n & 1 ? 1 : -1;
       const d = side * (half + KERB_W + 22);
       out.push(t.x[i] + this.nx[i] * d, t.y[i] + this.ny[i] * d);
@@ -540,6 +667,7 @@ export class Renderer {
     ctx.stroke(w.leftEdge);
     ctx.stroke(w.rightEdge);
 
+    if (w.tunnels.length) this._drawTunnels(ctx, P);
     this._drawFinishLine(ctx, w.W);
     if (!garage && st.jump > 0) this._drawJumpMarks(ctx, w.W);
     if (garage) this._drawPillars(ctx, w.garage);
@@ -547,6 +675,7 @@ export class Renderer {
     if (!this._overview) this._drawLighting(ctx, cam, st, w, r, m, wet);
     const rain = Math.min(1, Math.max(0, st.rain ?? st.wet ?? 0));
     if (rain > 0.2 && !this._overview) this._drawRain(ctx, cam, r, rain);
+    if (w.tunnels.length) this._drawTunnelLights(ctx, m);
     if (!this._overview && this.smoke) this._drawSparks(ctx, m);
   }
 
@@ -688,6 +817,7 @@ export class Renderer {
     const x1 = Math.floor((cam.px + viewR) / C);
     const y0 = Math.floor((cam.py - viewR) / C);
     const y1 = Math.floor((cam.py + viewR) / C);
+    const hasTunnel = this.world.tunnels.length > 0;
     const density = Math.min(1, 0.9 * wet); // wet は降り方 (rain)
     for (let gy = y0; gy <= y1; gy++) {
       for (let gx = x0; gx <= x1; gx++) {
@@ -700,6 +830,7 @@ export class Renderer {
         const u = f / 0.7;
         const x = (gx + hash(gx, gy, 10 + cyc)) * C;
         const y = (gy + hash(gx, gy, 20 + cyc)) * C;
+        if (hasTunnel && this._inTunnel(x, y)) continue; // トンネルの中は雨が降らない
         const rad = 0.8 + 4.6 * u; // 実物の雨粒の波紋ぐらい (数 mm)
         const g = groups[Math.min(2, Math.floor(u * 3))];
         g.moveTo(x + rad, y);

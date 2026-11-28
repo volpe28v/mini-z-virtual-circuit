@@ -23,7 +23,9 @@ export function wrapAngle(a) {
 // 座標は図の px (y 下向き)。START はメインストレート (下辺) 上で、①→⑨ の順に時計回りに走る。
 const SKETCH_SCALE = 6.5;
 // ジャンプ台 (図の px): ⑦ と ⑧ の間の斜めの下り。踏み切りの位置
-const RIDGE_JUMPS = [[309, 262]]; // mm / px (全長 約 13m、最小半径 約 170mm)
+const RIDGE_JUMPS = [[309, 262]];
+// トンネル (図の px の [入口, 出口]): ① の入り口 (図の ① の枠の右端) から ② の手前まで。左辺を北へ向かう区間
+const RIDGE_TUNNELS = [[[105, 516], [24, 362]]]; // mm / px (全長 約 13m、最小半径 約 170mm)
 const RIDGE_POINTS = [
   [170, 517], [130, 517], [100, 515], // START → ① へ (下辺を左向き)
   [70, 508], [45, 488], [30, 458], [24, 420], [24, 380], [24, 350], // ① 左下の右コーナー、左辺を北へ
@@ -101,7 +103,7 @@ const GARAGE_POINTS = (() => {
 })();
 
 export const COURSES = {
-  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS },
+  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
@@ -229,6 +231,27 @@ export class Track {
     this.kappa = smoothPeriodic(kraw, KAPPA_SIGMA / ds);
 
     this.speedU = this.buildProfile();
+
+    // トンネル: 入口・出口の図の点に最も近いサンプル (i0 → i1 の順に走る)
+    const nearest = ([px, py]) => {
+      const wx = px * this.course.scale;
+      const wy = py * this.course.scale;
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < N; i++) {
+        const d = Math.hypot(this.x[i] - wx, this.y[i] - wy);
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+      return best;
+    };
+    this.tunnels = (this.course.tunnels || []).map(([a, b]) => {
+      const i0 = nearest(a);
+      const i1 = nearest(b);
+      return { i0, i1, s0: i0 * ds, s1: i1 * ds };
+    });
 
     // ジャンプ台: 図の点に最も近い走行距離 (踏み切り位置)
     this.jumps = (this.course.jumps || []).map(([px, py]) => {
