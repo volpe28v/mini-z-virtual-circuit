@@ -714,7 +714,8 @@ export class Renderer {
     }
   }
 
-  // 着地の火花: 夜の暗さの上に、加算で明るく描く。粒の進行方向に伸びた短い線 (橙 + 中心の白)
+  // 着地の火花: 夜の暗さの上に、加算で明るく描く。粒の進行方向に伸びた太めの線 (橙 + 白い芯) と、先端の光の点。
+  // 実物の車体の外まで飛んで見えるよう、大きめに描く
   _drawSparks(ctx, m) {
     const S = this.smoke;
     if (S.sparkCount === 0) return;
@@ -723,23 +724,27 @@ export class Renderer {
     ctx.lineCap = 'round';
     for (let i = 0; i < S.sx.length; i++) {
       if (S.slife[i] <= 0) continue;
-      const t = 1 - S.sage[i] / S.slife[i];
+      const t = Math.min(1, 1.6 * (1 - S.sage[i] / S.slife[i])); // 後半まで明るく、最後に消える
       const x = S.sx[i];
       const y = S.sy[i];
-      const tx = x - S.svx[i] * 0.05;
-      const ty = y - S.svy[i] * 0.05;
-      ctx.strokeStyle = `rgba(255,150,40,${(0.95 * t).toFixed(3)})`;
-      ctx.lineWidth = 2.6;
+      const tx = x - S.svx[i] * 0.06;
+      const ty = y - S.svy[i] * 0.06;
+      ctx.strokeStyle = `rgba(255,140,30,${t.toFixed(3)})`;
+      ctx.lineWidth = 4.2;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(tx, ty);
       ctx.stroke();
-      ctx.strokeStyle = `rgba(255,236,170,${(1 * t).toFixed(3)})`;
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = `rgba(255,244,190,${t.toFixed(3)})`;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x + (tx - x) * 0.5, y + (ty - y) * 0.5);
+      ctx.lineTo(x + (tx - x) * 0.6, y + (ty - y) * 0.6);
       ctx.stroke();
+      ctx.fillStyle = `rgba(255,250,220,${(0.9 * t).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.6, 0, 6.2832);
+      ctx.fill();
     }
     ctx.globalCompositeOperation = 'source-over';
   }

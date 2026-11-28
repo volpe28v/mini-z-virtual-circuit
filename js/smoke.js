@@ -3,7 +3,7 @@
 import { carGeometry } from './camera.js';
 
 export const MAX_PARTICLES = 450;
-export const MAX_SPARKS = 64; // 着地の火花の上限
+export const MAX_SPARKS = 200; // 着地の火花の上限
 export const MAX_AMOUNT = 3; // 設定「タイヤスモーク」の上限
 const MAX_ALPHA = 0.85; // 1 粒の不透明度の上限 (重なりで濃くなる)
 const DEG = 180 / Math.PI;
@@ -98,7 +98,7 @@ export class SmokeSystem {
       }
       this.sx[i] += this.svx[i] * dt;
       this.sy[i] += this.svy[i] * dt;
-      const drag = Math.exp(-3.5 * dt);
+      const drag = Math.exp(-2 * dt);
       this.svx[i] *= drag;
       this.svy[i] *= drag;
     }
@@ -172,7 +172,7 @@ export class SmokeSystem {
     }
   }
 
-  // 着地の火花: 左右の後輪から、車体の外側・後ろへ勢いよく散る (煙の設定とは別。ジャンプ 0 なら出ない = 着地が起きない)
+  // 着地の火花: 左右の後輪から、車体の外側・後ろへ、実物の車体の外まで勢いよく散る (煙の設定とは別。ジャンプ 0 なら出ない = 着地が起きない)
   _sparks(veh, st) {
     const g = carGeometry(st.carLength, st.carWidth);
     const fx = Math.cos(veh.heading);
@@ -180,7 +180,7 @@ export class SmokeSystem {
     const rx = -fy;
     const ry = fx;
     const rnd = this.rng;
-    const n = 12;
+    const n = 40;
     for (let w = 0; w < 2; w++) {
       const side = w === 0 ? -1 : 1;
       for (let k = 0; k < n; k++) {
@@ -189,14 +189,14 @@ export class SmokeSystem {
         this.sx[i] = veh.position.x - fx * (g.wheelbase / 2) + rx * side * (g.track / 2) + (rnd() - 0.5) * 6;
         this.sy[i] = veh.position.y - fy * (g.wheelbase / 2) + ry * side * (g.track / 2) + (rnd() - 0.5) * 6;
         // 向き: 車体の外側 (横) と後ろに広がる。速さはばらつく
-        const sp = 160 + rnd() * 380;
+        const sp = 450 + rnd() * 750; // 実物の車体 (幅 70mm・長さ 150mm) の外まで飛ぶ速さ
         const ang = (rnd() - 0.5) * 2.2; // 横向きを中心に ±63°
         const lat = Math.cos(ang) * side;
         const back = Math.sin(ang) - 0.5;
         this.svx[i] = veh.velocity.x * 0.6 + (rx * lat + fx * back) * sp;
         this.svy[i] = veh.velocity.y * 0.6 + (ry * lat + fy * back) * sp;
         this.sage[i] = 0;
-        this.slife[i] = 0.22 + rnd() * 0.3;
+        this.slife[i] = 0.4 + rnd() * 0.45;
       }
     }
   }

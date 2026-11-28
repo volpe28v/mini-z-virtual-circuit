@@ -107,11 +107,11 @@ test('着地で火花が散り、短時間で消える (煙の設定が 0 でも
     }
     if (landAt < 0) sparksBeforeLand += sm.sparkCount;
     peak = Math.max(peak, sm.sparkCount);
-    if (landAt >= 0 && t - landAt > 0.7) after = Math.max(after, sm.sparkCount);
+    if (landAt >= 0 && t - landAt > 1) after = Math.max(after, sm.sparkCount);
   }
   assert.equal(sparksBeforeLand, 0);
-  assert.ok(peak >= 20 && peak <= 64, `peak=${peak}`);
-  assert.equal(after, 0, '0.7 秒後には全部消えている');
+  assert.ok(peak >= 60 && peak <= 200, `peak=${peak}`);
+  assert.equal(after, 0, '1 秒後には全部消えている');
 });
 
 test('ジャンプしても角度の上限と滑らかさを守り、周回して戻ってくる', () => {
