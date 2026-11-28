@@ -109,11 +109,11 @@ const GARAGE_POINTS = (() => {
   return [...pts.slice(5), ...pts.slice(0, 5)]; // 最初の点 = 上の辺 (十字の上の腕の先端) の中ほど
 })();
 
-// DDLabo 風ドリフトトラック (マット 2.4m × 1.5m。図は 1331 × 832 px の写真の座標で、1px = 約 1.803mm)。
+// DDLabo 風ドリフトトラック (実物のマットは 2.4m × 1.5m。図は 1331 × 832 px の写真の座標で、1px = 約 1.44mm = 実物の 80%)。
 // 一方通行・右回りが基調 (時計回り)。下辺のストレートを左へ → 左の輪を右回りに回る
 // → S 字で中央の丸いロゴの左へ → ロゴの周りを左回りに 270° → 上の青いエリアを右回りに 180° → 右の大きな輪を右回りに 180°
 // → 下辺のストレートへ戻る。輪と輪の中央の交差部は通らない。
-const DDLABO_SCALE = 2400 / 1331;
+const DDLABO_SCALE = (2400 / 1331) * 0.8; // 実物のマット (2.4m × 1.5m) の 80%。車に対してコースが大きすぎたので、20% 小さくした (マットは 1.92m × 1.2m)
 // 白い破線 (写真の位置)。側: 進行方向の左が -1、右が +1。d: 走行ラインの中心からの距離 (mm。外側の線は、斜めに滑る車体 (150 × 70mm) が被らないよう 120mm)。始点 → 終点へ、走る向きにたどる区間 (終点が先なら周回の継ぎ目をまたぐ)。
 // 基本は外側 (進行方向の左) の 1 本。中央ライン (内側の円弧) が、写真のとおり部分的に入る。
 const DDLABO_LINES = [
@@ -172,7 +172,7 @@ const DDLABO_POINTS = (() => {
 
 export const COURSES = {
   ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS, bridges: RIDGE_BRIDGES, beaches: RIDGE_BEACHES },
-  ddlabo: { id: 'ddlabo', name: 'DDL M', points: DDLABO_POINTS, scale: DDLABO_SCALE, theme: 'pad', indoor: false, studio: true, mat: [2400, 1500], padLines: DDLABO_LINES, driftK: { low: 1 / 2500, high: 1 / 520, gain: 1.35, slide: 0 } },
+  ddlabo: { id: 'ddlabo', name: 'DDL M', points: DDLABO_POINTS, scale: DDLABO_SCALE, theme: 'pad', indoor: false, studio: true, mat: [2080, 1360], matMargin: 80, padLines: DDLABO_LINES, driftK: { low: 1 / 2500, high: 1 / 520, gain: 1.35, slide: 0 } },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);

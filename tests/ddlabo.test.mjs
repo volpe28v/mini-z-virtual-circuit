@@ -15,11 +15,16 @@ test('DDLabo 風: コースの定義 (屋内のマット、床いっぱいのア
   assert.equal(dd.tunnels.length + dd.bridges.length + dd.beaches.length + dd.jumps.length, 0);
 });
 
-test('DDLabo 風: マット 2.4m × 1.5m の内側に収まる一方通行の閉ループ (1 周でちょうど 360°、自己交差なし)', () => {
+test('DDLabo 風: マット (実物 2.4m × 1.5m の 80% + 四方 80mm の余白) の内側に、外側の白線まで収まる一方通行の閉ループ (1 周でちょうど 360°、自己交差なし)', () => {
   const b = dd.bounds();
-  assert.ok(b.minX >= 0 && b.maxX <= 2400 && b.minY >= 0 && b.maxY <= 1500, JSON.stringify(b));
-  // 路面の左右 (±コース幅 / 2) もマットの内側
-  assert.ok(b.minX > 60 && b.maxX < 2340 && b.minY > 60 && b.maxY < 1440, 'マットの端から余裕がある');
+  const [mw, mh] = dd.course.mat;
+  const m = dd.course.matMargin;
+  assert.deepEqual([mw, mh, m], [2080, 1360, 80]);
+  // 写真の範囲 (1.92m × 1.2m) + 四方へ 80mm の余白 = 黄色の枠。ライン本体も、外側の白線 (120mm) も、枠の内側に収まる
+  const lineD = dd.padLines[0].d;
+  assert.ok(b.minX - lineD >= -m && b.maxX + lineD <= mw - m && b.minY - lineD >= -m && b.maxY + lineD <= mh - m, `外側の白線まで枠の内側: ${JSON.stringify(b)} d=${lineD}`);
+  assert.ok(b.minX > 50 && b.maxX < mw - m - 50 && b.minY > 50 && b.maxY < mh - m - 50, 'ライン本体はマットの端から余裕がある');
+  assert.ok(Math.abs(dd.course.scale * 1331 - (mw - 2 * m)) < 1 && Math.abs(dd.course.scale * 832 - (mh - 2 * m)) < 1, '写真の範囲の大きさは 1331 × 832 px の縮尺と合っている');
   assert.ok(Math.abs(Math.abs(dd.totalTurn) * DEG - 360) < 1, `${dd.totalTurn * DEG}`);
   // 時計回り (画面で右回り): 曲率の符号が正 (y 下向きの座標)
   assert.ok(dd.totalTurn > 0);
@@ -66,11 +71,11 @@ test('DDLabo 風: 左の輪 (右回り) → ロゴの周り (左回り 約 270°
   assert.ok(big[0].ang > 200 && big[0].ang < 290, `左の輪 ${big[0].ang}`);
   assert.ok(big[1].ang < -220 && big[1].ang > -290, `ロゴの周り ${big[1].ang}`);
   assert.ok(big[2].ang > 310 && big[2].ang < 390, `青いエリア + 右の輪 ${big[2].ang}`);
-  // 半径は最小でも 160mm 以上 (ロゴの周りと青いエリアの周り)
+  // 半径は最小でも 140mm 以上 (ロゴの周りと青いエリアの周り)
   let minR = Infinity;
   for (let i = 0; i < dd.N; i++) minR = Math.min(minR, 1 / Math.max(1e-9, Math.abs(dd.kappa[i])));
-  assert.ok(minR > 160, `minR=${minR}`);
-  // 離れた区間どうし (ロゴの周りと下辺のストレート、左の輪など) は 190mm 以上離れている
+  assert.ok(minR > 140, `minR=${minR}`);
+  // 離れた区間どうし (ロゴの周りと下辺のストレート、左の輪など) は 150mm 以上離れている
   let minD = Infinity;
   for (let i = 0; i < dd.N; i += 4) {
     for (let j = i + 1; j < dd.N; j += 4) {
@@ -79,7 +84,7 @@ test('DDLabo 風: 左の輪 (右回り) → ロゴの周り (左回り 約 270°
       minD = Math.min(minD, Math.hypot(dd.x[i] - dd.x[j], dd.y[i] - dd.y[j]));
     }
   }
-  assert.ok(minD > 190, `通路の間隔 ${minD}`);
+  assert.ok(minD > 150, `通路の間隔 ${minD}`);
 });
 
 test('DDLabo 風: 3 周走れて、車体はコーナーの内側を向く (ロゴの周りでは左、他では右)', () => {
@@ -138,15 +143,15 @@ test('DDLabo 風: 大きな輪 (左・右) でも、ドリフトしっぱなし 
     v.update(1 / 60, st);
     if (v.progress < dd.length) continue; // 1 周目は立ち上がり
     const k = dd.kappaAt(v.progress);
-    // 左右の大きな輪 (半径 450〜700mm の右回り)
-    if (k > 1 / 700 && k < 1 / 450) {
+    // 左右の大きな輪 (半径 360〜560mm の右回り)
+    if (k > 1 / 560 && k < 1 / 360) {
       inLoop++;
       if (v.driftAngle * DEG > 38) deep++;
       maxOut = Math.max(maxOut, Math.abs(v.offset));
       peak = Math.max(peak, v.driftAngle * DEG);
     }
   }
-  assert.ok(inLoop > 800, `輪の中のステップ数 ${inLoop}`);
+  assert.ok(inLoop > 500, `輪の中のステップ数 ${inLoop}`);
   assert.ok(deep / inLoop > 0.8, `38° 以上を保った割合 ${(deep / inLoop).toFixed(2)}`);
   assert.ok(peak < 55, `最大 ${peak.toFixed(0)}°`);
   assert.ok(maxOut < 30, `中心のずれ ${maxOut.toFixed(0)}mm (道の中央を滑る)`);
@@ -164,7 +169,7 @@ test('DDLabo 風: 大きな輪で、車体の四隅が外側の白線 (外へ 12
     v.update(1 / 60, st);
     if (v.progress < dd.length) continue;
     const k = dd.kappaAt(v.progress);
-    if (!(k > 1 / 700 && k < 1 / 450)) continue;
+    if (!(k > 1 / 560 && k < 1 / 360)) continue;
     const hint = Math.round((v.progress % dd.length) / dd.ds);
     const c = Math.cos(v.heading);
     const s = Math.sin(v.heading);
@@ -187,7 +192,7 @@ test('DDLabo 風: 大きな輪で、車体の四隅が外側の白線 (外へ 12
     }
     n++;
   }
-  assert.ok(n > 800);
+  assert.ok(n > 500);
   const lineD = dd.padLines[0].d;
   assert.equal(lineD, 120);
   assert.ok(outMax < lineD - 20, `車体の四隅の外側への張り出し ${outMax.toFixed(0)}mm (外側の白線は ${lineD}mm)`);

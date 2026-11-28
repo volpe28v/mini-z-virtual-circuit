@@ -725,8 +725,11 @@ export class Renderer {
     const t = this.track;
     const S = t.course.scale;
     const rnd = makeRng(20241128);
-    const art = buildPadArt(S);
-    const [MW, MH] = art.mat;
+    const margin = t.course.matMargin || 0;
+    const art = buildPadArt(S, 1.6, margin);
+    const [MW0, MH0] = art.mat;
+    const MW = MW0 + 2 * margin; // 余白を含めたマットの大きさ
+    const MH = MH0 + 2 * margin;
     // 走り込んだ路面の渦: 低い解像度 (0.6 画素 / mm) の画像に、走行ラインに沿う細い黒ずみの筋を重ねる。拡大するとぼけるので、ちょうどよい柔らかさ
     const K = 0.6;
     const sw = document.createElement('canvas');
@@ -734,6 +737,7 @@ export class Renderer {
     sw.height = Math.ceil(MH * K);
     const g = sw.getContext('2d');
     g.scale(K, K);
+    g.translate(margin, margin); // 余白の分だけ、世界の (-margin, -margin) が画像の左上
     g.lineCap = 'round';
     g.lineJoin = 'round';
     const N = t.N;
@@ -803,9 +807,14 @@ export class Renderer {
   _drawPadFloor(ctx, pad, P) {
     drawPadArt(ctx, pad.art, P);
     // 走り込んだ路面の渦 (ペイントの上にもかぶる)
-    const [MW, MH] = pad.art.mat;
-    ctx.drawImage(pad.swirl, 0, 0, MW, MH);
-    // 擦れた白い破線
+    const [MW0, MH0] = pad.art.mat;
+    const m = pad.art.margin;
+    ctx.drawImage(pad.swirl, -m, -m, MW0 + 2 * m, MH0 + 2 * m);
+    // 擦れた白い破線 (マットの外には引かない: 外側の線がマットの端を越える所は、端で切れる)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-m, -m, MW0 + 2 * m, MH0 + 2 * m);
+    ctx.clip();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const [p, level] of pad.dashes) {
@@ -813,6 +822,7 @@ export class Renderer {
       ctx.lineWidth = 3 + level * 0.45;
       ctx.stroke(p);
     }
+    ctx.restore();
   }
 
   // 街灯: コースの外側に、左右交互に一定間隔で置く (夜の光だまり用)。[x0, y0, x1, y1, ...]
@@ -994,10 +1004,7 @@ export class Renderer {
       m.globalAlpha = 1;
     }
     if (st.showCar && !overview) this._drawDebugCar(this.ctx, cam, st, vehicle);
-    if (overview) {
-      this._drawMatOutline(this.ctx, cam);
-      this._drawOverviewCar(this.ctx, cam, vehicle);
-    }
+    if (overview) this._drawOverviewCar(this.ctx, cam, vehicle);
   }
 
   _drawWorld(ctx, cam, st) {
@@ -1012,7 +1019,7 @@ export class Renderer {
     const garage = this.theme === 'garage';
     const pad = this.theme === 'pad';
     // 芝 (大きな色むらはタイルに焼き込み済み)。地下駐車場は暗いコンクリートの床
-    ctx.fillStyle = garage || pad ? P.concreteDark : P.grass; // ドリフトトラックのマットの外は、屋内のコンクリートの床
+    ctx.fillStyle = garage ? P.concreteDark : pad ? '#050506' : P.grass; // ドリフトトラックは、マットの外を切って真っ黒にする (マットの縁がはっきり見える)
     ctx.fillRect(gx, gy, 2 * r, 2 * r);
 
     if (!garage && !pad) {
@@ -1406,19 +1413,6 @@ export class Renderer {
       }
     }
     ctx.restore();
-  }
-
-  // 俯瞰のとき、マットの外形 (コースの定義にあれば) を細い線で示す
-  _drawMatOutline(ctx, cam) {
-    const mat = this.track.course && this.track.course.mat;
-    if (!mat) return;
-    const m = cameraMatrix(cam, this.pr);
-    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
-    ctx.strokeStyle = 'rgba(255,214,80,0.9)';
-    ctx.lineWidth = 3 / cam.k;
-    ctx.setLineDash([24 / cam.k, 12 / cam.k]);
-    ctx.strokeRect(0, 0, mat[0], mat[1]);
-    ctx.setLineDash([]);
   }
 
   // 俯瞰のとき、車の現在位置と向きを赤い三角で示す

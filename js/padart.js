@@ -104,7 +104,9 @@ function decal(S, box, ppm, seed, wearDensity, draw) {
   return { canvas: c, x: x0 * S, y: y0 * S, w: (x1 - x0) * S, h: (y1 - y0) * S };
 }
 
-export function buildPadArt(S, ppm = 1.6) {
+// marginMm: 写真の外側へ広げる余白 (mm)。外側の白線が写真の端を越えるので、マットを四方へ広げ、道路・芝を端まで延ばす
+export function buildPadArt(S, ppm = 1.6, marginMm = 0) {
+  const mp = marginMm / S; // 写真の px にした余白
   const decals = [];
   const WHITE = 'rgba(228,228,220,0.86)';
 
@@ -249,22 +251,23 @@ export function buildPadArt(S, ppm = 1.6) {
     return p;
   };
   const grass = [
-    poly([[232, 0], [415, 0], [630, 128], [632, 168], [560, 128], [450, 96], [340, 86], [232, 100]]),
-    poly([[940, 0], [1100, 0], [1100, 46], [1010, 20]]),
-    poly([[232, 832], [232, 792], [300, 806], [370, 832]]),
-    poly([[930, 832], [1000, 812], [1100, 792], [1100, 832]]),
-    poly([[0, 0], [18, 0], [18, 262], [0, 262]]),
-    poly([[0, 582], [18, 582], [18, 832], [0, 832]]),
-    poly([[1313, 0], [1331, 0], [1331, 232], [1313, 232]]),
-    poly([[1313, 586], [1331, 586], [1331, 832], [1313, 832]]),
+    poly([[232, -mp], [415, -mp], [415, 0], [630, 128], [632, 168], [560, 128], [450, 96], [340, 86], [232, 100]]),
+    poly([[940, -mp], [1100, -mp], [1100, 46], [1010, 20], [940, 0]]),
+    poly([[232, 832 + mp], [232, 792], [300, 806], [370, 832], [370, 832 + mp]]),
+    poly([[930, 832 + mp], [930, 832], [1000, 812], [1100, 792], [1100, 832 + mp]]),
+    // 左右の端の細い芝 (写真では端にある。広げたマットの端 (枠) に置き直す)
+    poly([[-mp, -mp], [-mp + 20, -mp], [-mp + 20, 262], [-mp, 262]]),
+    poly([[-mp, 582], [-mp + 20, 582], [-mp + 20, 832 + mp], [-mp, 832 + mp]]),
+    poly([[1331 + mp - 20, -mp], [1331 + mp, -mp], [1331 + mp, 232], [1331 + mp - 20, 232]]),
+    poly([[1331 + mp - 20, 586], [1331 + mp, 586], [1331 + mp, 832 + mp], [1331 + mp - 20, 832 + mp]]),
   ];
   const roadLines = new Path2D();
   // 左右の端の縦線は、大きなコーナーの白い破線と重なるので引かない。道路の内側の縁線も、コーナーの破線に届かない長さにする
-  for (const [x, y0, y1] of [[232, 0, 76], [232, 820, 832], [1102, 0, 32], [1102, 820, 832]]) {
+  for (const [x, y0, y1] of [[232, -mp, 76], [232, 820, 832 + mp], [1102, -mp, 32], [1102, 820, 832 + mp]]) {
     roadLines.moveTo(x * S, y0 * S);
     roadLines.lineTo(x * S, y1 * S);
   }
-  const roads = [poly([[18, 0], [232, 0], [232, 832], [18, 832]]), poly([[1102, 0], [1313, 0], [1313, 832], [1102, 832]])];
+  const roads = [poly([[18, -mp], [232, -mp], [232, 832 + mp], [18, 832 + mp]]), poly([[1102, -mp], [1313, -mp], [1313, 832 + mp], [1102, 832 + mp]])];
 
   // ---- 路面の質感: ひび割れ (細い黒い枝)、補修跡 (うっすら暗い四角) ----
   const rnd = makeRng(777);
@@ -287,20 +290,22 @@ export function buildPadArt(S, ppm = 1.6) {
       }
     }
   };
-  for (let i = 0; i < 150; i++) walk(rnd() * MW, rnd() * MH, rnd() * 6.2832, 12 + Math.floor(rnd() * 34), 0);
+  const m = marginMm;
+  for (let i = 0; i < 170; i++) walk(rnd() * (MW + 2 * m) - m, rnd() * (MH + 2 * m) - m, rnd() * 6.2832, 12 + Math.floor(rnd() * 34), 0);
   const patches = [];
-  for (let i = 0; i < 9; i++) patches.push([rnd() * MW, rnd() * MH, 90 + rnd() * 160, 35 + rnd() * 60, (rnd() - 0.5) * 0.5, rnd() < 0.7 ? 1 : -1]);
+  for (let i = 0; i < 9; i++) patches.push([rnd() * (MW + 2 * m) - m, rnd() * (MH + 2 * m) - m, 90 + rnd() * 160, 35 + rnd() * 60, (rnd() - 0.5) * 0.5, rnd() < 0.7 ? 1 : -1]);
 
-  return { decals, grass, roads, roadLines, cracks, patches, mat: [MW, MH] };
+  return { decals, grass, roads, roadLines, cracks, patches, mat: [MW, MH], margin: marginMm };
 }
 
 export function drawPadArt(ctx, art, P) {
   const [MW, MH] = art.mat;
-  // マットの下地 (アスファルト)。外側の床との境に、細い影
+  const m = art.margin;
+  // マットの下地 (アスファルト)。写真の外側にも余白を広げている。マットの外は真っ黒 (renderer の下地)
   ctx.fillStyle = P.asphalt;
-  ctx.fillRect(0, 0, MW, MH);
+  ctx.fillRect(-m, -m, MW + 2 * m, MH + 2 * m);
   ctx.fillStyle = 'rgba(150,150,150,0.2)'; // 写真のアスファルトは、もう少し明るい中間のグレー
-  ctx.fillRect(0, 0, MW, MH);
+  ctx.fillRect(-m, -m, MW + 2 * m, MH + 2 * m);
   // 左右の道路は、ほんの少し明るい
   ctx.fillStyle = 'rgba(255,255,255,0.035)';
   for (const r of art.roads) ctx.fill(r);
