@@ -59,6 +59,10 @@ export class Vehicle {
     this._feintDir = 0;
     this.pos = { x: 0, y: 0 };
     this._c = {};
+    // ドリフトの出始め・最大角になる曲率 (コースごとに変えられる。大きな半径のトラックは、緩いコーナーでも最大角まで振る)
+    const dk = (track.course && track.course.driftK) || {};
+    this.kLow = dk.low ?? K_LOW;
+    this.kHigh = dk.high ?? K_HIGH;
     this.reset();
   }
 
@@ -127,8 +131,8 @@ export class Vehicle {
 
     const kLook = tr.kappaAt(this.progress + this.speed * LOOKAHEAD_S);
     const k0 = tr.kappaAt(this.progress);
-    const gLook = smoothstep(K_LOW, K_HIGH, Math.abs(kLook));
-    const g0 = smoothstep(K_LOW, K_HIGH, Math.abs(k0));
+    const gLook = smoothstep(this.kLow, this.kHigh, Math.abs(kLook));
+    const g0 = smoothstep(this.kLow, this.kHigh, Math.abs(k0));
 
     const strength = st.driftStrength;
     const maxD = st.maxDrift * DEG;
@@ -159,7 +163,7 @@ export class Vehicle {
     let fw = 0;
     if (feint > 0) {
       const kFar = tr.kappaAt(this.progress + this.speed * FEINT_LOOK_S);
-      const gFar = smoothstep(K_LOW, K_HIGH, Math.abs(kFar));
+      const gFar = smoothstep(this.kLow, this.kHigh, Math.abs(kFar));
       fw = gFar * (1 - Math.min(1, gLook * 2)) * (1 - g0);
       target -= Math.sign(kFar) * fw * maxD * FEINT_ANGLE * feint * Math.min(1, strength + 0.3) * this.driftScale;
       this._feintDir = Math.sign(kFar);

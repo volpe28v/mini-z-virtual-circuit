@@ -11,7 +11,7 @@ import { SkidMarks } from './skids.js';
 import { createUI } from './ui.js';
 
 const params = new URLSearchParams(location.search);
-const overview = params.has('overview'); // コース全体の俯瞰 (確認用)
+const overviewParam = params.has('overview'); // コース全体の俯瞰 (確認用。設定の「コース全体を表示」でも切り替えられる)
 
 let storage = null;
 try {
@@ -171,7 +171,13 @@ function frame(now) {
   }
   // 屋内 (地下駐車場) は、天候も時間帯も関係ない。薄暗い固定の明かりで、路面は乾いている
   live.indoor = indoor;
-  if (indoor) {
+  if (track.course.studio) {
+    // 屋内の明るいマット (ドリフトトラック): 天候も時間帯も無く、昼の明るさで路面は乾いている
+    live.dark = 0;
+    live.warm = 0;
+    live.wet = 0;
+    live.rain = 0;
+  } else if (indoor) {
     live.dark = 0.74;
     live.warm = 0;
     live.wet = 0;
@@ -184,6 +190,7 @@ function frame(now) {
 
   const w = window.innerWidth;
   const h = window.innerHeight;
+  const overview = overviewParam || settings.overview;
   if (overview) {
     const b = track.bounds();
     cam.px = (b.minX + b.maxX) / 2;

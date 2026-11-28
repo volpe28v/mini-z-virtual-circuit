@@ -129,3 +129,17 @@ test('デバッグ表示の車輪: 車両の長さ・幅に比例し、車体の
     }
   }
 });
+
+test('設定: コース全体の表示 (確認用) は、保存されていてもリロードで必ずオフに戻る', () => {
+  assert.equal(defaults().overview, false);
+  assert.equal(sanitize({ overview: true }).overview, false);
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const d = defaults();
+  d.overview = true;
+  d.speed = 700;
+  assert.ok(saveSettings(storage, d));
+  const r = loadSettings(storage);
+  assert.equal(r.overview, false);
+  assert.equal(r.speed, 700); // ほかの設定は復元される
+});

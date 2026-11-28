@@ -8,7 +8,7 @@ const DEG = 180 / Math.PI;
 const garage = new Track('garage');
 
 test('コースの一覧: ridge と garage があり、未知の名前は ridge になる', () => {
-  assert.deepEqual(COURSE_IDS.sort(), ['garage', 'ridge']);
+  assert.deepEqual(COURSE_IDS.sort(), ['ddlabo', 'garage', 'ridge']);
   assert.equal(new Track('nothing').course.id, 'ridge');
   assert.equal(new Track().course.id, 'ridge');
   assert.equal(garage.course.indoor, true);

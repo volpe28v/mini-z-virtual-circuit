@@ -109,8 +109,70 @@ const GARAGE_POINTS = (() => {
   return [...pts.slice(5), ...pts.slice(0, 5)]; // 最初の点 = 上の辺 (十字の上の腕の先端) の中ほど
 })();
 
+// DDLabo 風ドリフトトラック (マット 2.4m × 1.5m。図は 1331 × 832 px の写真の座標で、1px = 約 1.803mm)。
+// 一方通行・右回りが基調 (時計回り)。下辺のストレートを左へ → 左の輪を右回りに回る
+// → S 字で中央の丸いロゴの左へ → ロゴの周りを左回りに 270° → 上の青いエリアを右回りに 180° → 右の大きな輪を右回りに 180°
+// → 下辺のストレートへ戻る。輪と輪の中央の交差部は通らない。
+const DDLABO_SCALE = 2400 / 1331;
+// 白い破線 (写真の位置)。側: 進行方向の左が -1、右が +1。始点 → 終点へ、走る向きにたどる区間 (終点が先なら周回の継ぎ目をまたぐ)。
+// 基本は外側 (進行方向の左) の 1 本。中央ライン (内側の円弧) が、写真のとおり部分的に入る。
+const DDLABO_LINES = [
+  { side: -1, from: [806, 300], to: [595, 255] }, // 外側: 青いエリアの左 → 上 → 右の大きな輪 → 下辺 → 左の輪 (周回の継ぎ目をまたぐ)
+  { side: 1, from: [55, 600], to: [55, 290] }, // 中央: 左の輪の左辺の内側
+  { side: 1, from: [1250, 590], to: [1090, 712] }, // 中央: 右の輪の右下の内側
+  { side: -1, from: [1085, 530], to: [1035, 385] }, // 中央: ロゴの周りの右側
+];
+const DDLABO_POINTS = (() => {
+  const pts = [];
+  const L = { cx: 375, cy: 445, rx: 252, rxL: 330, ry: 305 }; // 左の輪 (楕円。底 y=750、頂上 y=140、右半分 (rx) は左半分より 78px (車幅 2 つ分) 狭い)
+  const G = { cx: 955, cy: 490, rx: 140, rxL: 207, ry: 140 }; // 左側 (rxL) だけ張り出す (168 + 車幅 1 つ分の 39px) // 中央の丸いロゴの周り (左回り)
+  const B = { cx: 955, cy: 220, rx: 155, ry: 130 }; // 上の青いエリアの周り (右回り)。ロゴの輪の頂上と接する
+  const R = { cx: 955, cy: 420, rx: 330, ry: 330 }; // 右の大きな輪 (底 y=750)。青いエリアの輪の頂上と接する
+  const arcPts = (c, a0, a1, step = 12) => {
+    const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) / step));
+    for (let k = 0; k <= n; k++) {
+      const a = ((a0 + ((a1 - a0) * k) / n) * Math.PI) / 180;
+      const rx = Math.cos(a) < 0 && c.rxL ? c.rxL : c.rx;
+      pts.push([c.cx + rx * Math.cos(a), c.cy + c.ry * Math.sin(a)]);
+    }
+  };
+  const hermite = (p0, t0, p1, t1, m, n) => {
+    for (let k = 1; k < n; k++) {
+      const u = k / n;
+      const h00 = 2 * u ** 3 - 3 * u ** 2 + 1;
+      const h10 = u ** 3 - 2 * u ** 2 + u;
+      const h01 = -2 * u ** 3 + 3 * u ** 2;
+      const h11 = u ** 3 - u ** 2;
+      pts.push([h00 * p0[0] + h10 * m * t0[0] + h01 * p1[0] + h11 * m * t1[0], h00 * p0[1] + h10 * m * t0[1] + h01 * p1[1] + h11 * m * t1[1]]);
+    }
+  };
+  // 下辺のストレート (左向き): 右の輪の底 → 左の輪の底
+  for (let x = 900; x > 450; x -= 100) pts.push([x, 750]);
+  const aEnd = 306;
+  arcPts(L, 90, aEnd); // 左の輪: 底 → 左辺 → 上 → 右上 (南南東向きで終わる)
+  const aL = (aEnd * Math.PI) / 180;
+  const pL = pts[pts.length - 1];
+  const tl = [-L.rx * Math.sin(aL), L.ry * Math.cos(aL)];
+  const tn = Math.hypot(tl[0], tl[1]);
+  const tL = [tl[0] / tn, tl[1] / tn];
+  const pG = [G.cx - G.rxL, G.cy]; // ロゴの輪の左端 (南向き)
+  hermite(pL, tL, pG, [0, 1], 260, 10); // S 字 (右へ曲がってから左、またロゴの輪へ)
+  arcPts(G, 180, -90, 15); // ロゴの周り: 左 → 底 → 右 → 頂上 (左回り 270°)
+  arcPts(B, 90, 270, 15); // 青いエリアの周り: 底 (=ロゴの頂上) → 左 → 頂上 (右回り 180°)
+  arcPts(R, 270, 450); // 右の大きな輪: 頂上 → 右辺 → 底 (西向き)
+  pts.pop();
+  // 重なる点 (輪の継ぎ目) を取り除く
+  const out = [];
+  for (const q of pts) {
+    const last = out[out.length - 1];
+    if (!last || Math.hypot(q[0] - last[0], q[1] - last[1]) > 2) out.push(q);
+  }
+  return out;
+})();
+
 export const COURSES = {
   ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS, bridges: RIDGE_BRIDGES, beaches: RIDGE_BEACHES },
+  ddlabo: { id: 'ddlabo', name: 'DDL M', points: DDLABO_POINTS, scale: DDLABO_SCALE, theme: 'pad', indoor: false, studio: true, mat: [2400, 1500], padLines: DDLABO_LINES, driftK: { low: 1 / 2500, high: 1 / 520 } },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
@@ -271,6 +333,8 @@ export class Track {
       const i1 = nearest(b);
       return { i0, i1, s0: i0 * ds, s1: i1 * ds, side };
     });
+
+    this.padLines = (this.course.padLines || []).map(({ side, from, to }) => ({ side, i0: nearest(from), i1: nearest(to) }));
 
     // ジャンプ台: 図の点に最も近い走行距離 (踏み切り位置)
     this.jumps = (this.course.jumps || []).map(([px, py]) => {

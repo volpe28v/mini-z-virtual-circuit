@@ -37,6 +37,7 @@ export const CHOICES = [
     options: [
       ['ridge', 'Ridge 風サーキット'],
       ['garage', '地下駐車場 (ドリフト)'],
+      ['ddlabo', 'DDL M'],
     ],
     def: 'ridge',
   },
@@ -44,6 +45,7 @@ export const CHOICES = [
 
 export const BOOLEANS = [
   { key: 'showCar', label: '仮想車両を表示 (デバッグ)', def: false },
+  { key: 'overview', label: 'コース全体を表示 (確認用。走行は続く)', def: false },
   { key: 'autoTime', label: '時間帯を自動で変える (昼→夕方→夜)', def: true },
   { key: 'autoWeather', label: '天候を自動で変える (晴れ→雨→晴れ)', def: true },
   { key: 'autoRes', label: '重いときは解像度を自動で下げる', def: true },
@@ -85,6 +87,7 @@ export function sanitize(raw) {
   for (const c of CHOICES) {
     if (c.options.some(([v]) => v === raw[c.key])) out[c.key] = raw[c.key];
   }
+  out.overview = false; // コース全体の表示 (確認用) は保存した値を使わない。リロードすると必ず通常の画面に戻る
   // 旧バージョンの保存値が旧既定値のままなら、新しい既定値を使う
   const savedVersion = typeof raw.version === 'number' ? raw.version : 1;
   for (const m of MIGRATIONS) {

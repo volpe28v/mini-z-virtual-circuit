@@ -3,6 +3,7 @@ import { cameraMatrix, viewRadiusMm, carGeometry } from './camera.js';
 import { simulateRubber } from './marks.js';
 import { TILE_MM } from './textures.js';
 import { smokeSize, smokeAlpha } from './smoke.js';
+import { buildPadArt, drawPadArt, makeRng } from './padart.js';
 
 const KERB_W = 18; // 縁石の幅 (mm)
 const KERB_QUAD = 7; // 縁石 1 区画 = 7 サンプル (約 28mm)
@@ -17,6 +18,7 @@ const BEACH_WET = 4; // 波打ち際の濡れた砂
 const BEACH_SEA = 520; // 海: 波打ち際から外側へ (mm。画面の外まで届く長さ)
 const BEACH_TAPER = 380; // 砂浜の両端が草地へなじむ長さ (mm)
 const SAND_TILE_MM = 60;
+const PAD_LINE = 85; // ドリフトトラックの白い破線: 走行ラインの中心から左右 (mm)
 const PATH_STRIDE = 2; // 路面パスのサンプル間隔 (8mm)
 
 export class Renderer {
@@ -263,12 +265,13 @@ export class Renderer {
     }
 
     const puddles = this._buildPuddles(half);
-    const lamps = this._buildLamps(half);
+    const lamps = this.theme === 'pad' ? [] : this._buildLamps(half);
     const garage = this.theme === 'garage' ? this._buildGarage(half, W) : null;
+    const pad = this.theme === 'pad' ? this._buildPad() : null;
     const tunnels = this._buildTunnels(half);
     const bridges = this._buildBridges(half);
     const beaches = this._buildBeaches(half);
-    this.world = { tunnels, bridges, beaches, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
+    this.world = { tunnels, bridges, beaches, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage, pad };
     this.buildMarks(st);
   }
 
@@ -717,6 +720,101 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  // ドリフトトラック: ペイント・ひび割れ・周囲 (padart.js)、走り込んだ路面の渦 (焼き込み)、擦れた白い破線
+  _buildPad() {
+    const t = this.track;
+    const S = t.course.scale;
+    const rnd = makeRng(20241128);
+    const art = buildPadArt(S);
+    const [MW, MH] = art.mat;
+    // 走り込んだ路面の渦: 低い解像度 (0.6 画素 / mm) の画像に、走行ラインに沿う細い黒ずみの筋を重ねる。拡大するとぼけるので、ちょうどよい柔らかさ
+    const K = 0.6;
+    const sw = document.createElement('canvas');
+    sw.width = Math.ceil(MW * K);
+    sw.height = Math.ceil(MH * K);
+    const g = sw.getContext('2d');
+    g.scale(K, K);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    const N = t.N;
+    const step = 3;
+    const streak = (d0, w, alpha, from, len, f1, f2, p1, p2) => {
+      g.strokeStyle = `rgba(0,0,0,${alpha.toFixed(3)})`;
+      g.lineWidth = w;
+      g.beginPath();
+      for (let k = 0; k <= len; k += step) {
+        const i = (from + k) % N;
+        const d = d0 + 22 * Math.sin(k * f1 + p1) + 12 * Math.sin(k * f2 + p2);
+        const x = t.x[i] + this.nx[i] * d;
+        const y = t.y[i] + this.ny[i] * d;
+        if (k === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.stroke();
+    };
+    for (const [w, a] of [[520, 0.02], [380, 0.025], [260, 0.03]]) streak(0, w, a, 0, N, 0, 0, 0, 0); // 全体の暗さ
+    for (let n = 0; n < 260; n++) {
+      const d0 = (rnd() + rnd() + rnd() - 1.5) * 300; // 中心に多く、外へ薄く
+      const len = Math.round((0.2 + rnd() * 0.8) * N);
+      streak(d0, 6 + rnd() * 40, 0.01 + rnd() * 0.04, Math.floor(rnd() * N), len, 0.004 + rnd() * 0.01, 0.015 + rnd() * 0.02, rnd() * 6.28, rnd() * 6.28);
+    }
+    // 濃い染みと薄い染み
+    for (let n = 0; n < 90; n++) {
+      const i = Math.floor(rnd() * N);
+      const d = (rnd() - 0.5) * 420;
+      const x = t.x[i] + this.nx[i] * d;
+      const y = t.y[i] + this.ny[i] * d;
+      const r = 50 + rnd() * 130;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const dark = rnd() < 0.7;
+      gr.addColorStop(0, dark ? `rgba(0,0,0,${(0.05 + rnd() * 0.07).toFixed(3)})` : `rgba(170,170,170,${(0.03 + rnd() * 0.04).toFixed(3)})`);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    // 擦れた白い破線: 長さ・間隔・濃さをばらつかせる (濃さ 3 段階に分けて、それぞれ 1 本の Path2D)
+    const dashes = (d, include) => {
+      const b = [new Path2D(), new Path2D(), new Path2D()];
+      let i = 0;
+      while (i < N) {
+        if (!include(i)) {
+          i++;
+          continue;
+        }
+        const end = Math.min(N, i + Math.round((38 + rnd() * 26) / t.ds));
+        const p = b[Math.floor(rnd() * 3)];
+        let first = true;
+        for (let j = i; j < end && include(j); j++) {
+          this._off(p, j, d, first);
+          first = false;
+        }
+        i = end + Math.round((24 + rnd() * 24) / t.ds);
+      }
+      return b;
+    };
+    // 写真の位置の区間 (Track.padLines)。基本は外側の 1 本で、中央ラインが部分的に入る
+    const groups = t.padLines.map((l) => {
+      const inRange = (i) => (l.i0 <= l.i1 ? i >= l.i0 && i <= l.i1 : i >= l.i0 || i <= l.i1);
+      return dashes(l.side * PAD_LINE, inRange);
+    });
+    return { art, S, swirl: sw, dashes: groups.flatMap((b) => b.map((p, i) => [p, i])) };
+  }
+
+  _drawPadFloor(ctx, pad, P) {
+    drawPadArt(ctx, pad.art, P);
+    // 走り込んだ路面の渦 (ペイントの上にもかぶる)
+    const [MW, MH] = pad.art.mat;
+    ctx.drawImage(pad.swirl, 0, 0, MW, MH);
+    // 擦れた白い破線
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const [p, level] of pad.dashes) {
+      ctx.strokeStyle = `rgba(236,236,228,${[0.5, 0.68, 0.86][level]})`;
+      ctx.lineWidth = 3 + level * 0.45;
+      ctx.stroke(p);
+    }
+  }
+
   // 街灯: コースの外側に、左右交互に一定間隔で置く (夜の光だまり用)。[x0, y0, x1, y1, ...]
   _buildLamps(half) {
     const t = this.track;
@@ -896,6 +994,10 @@ export class Renderer {
       m.globalAlpha = 1;
     }
     if (st.showCar && !overview) this._drawDebugCar(this.ctx, cam, st, vehicle);
+    if (overview) {
+      this._drawMatOutline(this.ctx, cam);
+      this._drawOverviewCar(this.ctx, cam, vehicle);
+    }
   }
 
   _drawWorld(ctx, cam, st) {
@@ -908,11 +1010,12 @@ export class Renderer {
     const gy = cam.py - r;
 
     const garage = this.theme === 'garage';
+    const pad = this.theme === 'pad';
     // 芝 (大きな色むらはタイルに焼き込み済み)。地下駐車場は暗いコンクリートの床
-    ctx.fillStyle = garage ? P.concreteDark : P.grass;
+    ctx.fillStyle = garage || pad ? P.concreteDark : P.grass; // ドリフトトラックのマットの外は、屋内のコンクリートの床
     ctx.fillRect(gx, gy, 2 * r, 2 * r);
 
-    if (!garage) {
+    if (!garage && !pad) {
       // ランオフ (砂利)
       ctx.fillStyle = P.gravel;
       ctx.fill(w.runoff);
@@ -924,7 +1027,8 @@ export class Renderer {
     if (w.bridges.length) this._drawBridgeWater(ctx);
 
     const wet = Math.min(1, Math.max(0, st.wet || 0));
-    // 縁石 (赤白) + 汚れ + 立体感の線
+    // 縁石 (赤白) + 汚れ + 立体感の線 (ドリフトトラックには無い)
+    if (!pad) {
     ctx.fillStyle = garage ? '#e0b01c' : '#c4272c'; // 地下駐車場は黄黒のポールガード
     ctx.fill(w.red);
     ctx.fillStyle = garage ? '#25272c' : '#e9e6de';
@@ -936,6 +1040,7 @@ export class Renderer {
     ctx.strokeStyle = 'rgba(255,255,255,0.28)';
     ctx.lineWidth = 1.1;
     ctx.stroke(w.kerbInner);
+    }
 
     // 雨: 芝・砂利・縁石をまとめて少し暗く
     if (wet > 0.01) {
@@ -945,7 +1050,8 @@ export class Renderer {
 
     // 路面
     ctx.fillStyle = garage ? P.concrete : P.asphalt;
-    ctx.fill(w.road, 'evenodd');
+    if (pad) this._drawPadFloor(ctx, w.pad, P);
+    else ctx.fill(w.road, 'evenodd');
     if (garage) this._drawGarageFloor(ctx, w.garage);
     if (wet > 0.01) {
       // 濡れたアスファルトは暗く青みがかり、水たまりが光る
@@ -995,17 +1101,19 @@ export class Renderer {
       }
     }
 
-    // 路面端の白線
-    ctx.strokeStyle = 'rgba(232,232,226,0.88)';
-    ctx.lineWidth = 3;
+    // 路面端の白線 (ドリフトトラックの白い破線は、路面と一緒に描く)
     ctx.lineCap = 'butt';
-    ctx.stroke(w.leftEdge);
-    ctx.stroke(w.rightEdge);
+    if (!pad) {
+      ctx.strokeStyle = 'rgba(232,232,226,0.88)';
+      ctx.lineWidth = 3;
+      ctx.stroke(w.leftEdge);
+      ctx.stroke(w.rightEdge);
+    }
 
     if (w.tunnels.length) this._drawTunnels(ctx, P);
     if (w.bridges.length) this._drawBridges(ctx);
-    this._drawFinishLine(ctx, w.W);
-    if (!garage && st.jump > 0) this._drawJumpMarks(ctx, w.W);
+    if (!pad) this._drawFinishLine(ctx, w.W);
+    if (!garage && !pad && st.jump > 0) this._drawJumpMarks(ctx, w.W);
     if (garage) this._drawPillars(ctx, w.garage);
     if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
     if (!this._overview) this._drawLighting(ctx, cam, st, w, r, m, wet);
@@ -1298,6 +1406,34 @@ export class Renderer {
       }
     }
     ctx.restore();
+  }
+
+  // 俯瞰のとき、マットの外形 (コースの定義にあれば) を細い線で示す
+  _drawMatOutline(ctx, cam) {
+    const mat = this.track.course && this.track.course.mat;
+    if (!mat) return;
+    const m = cameraMatrix(cam, this.pr);
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.strokeStyle = 'rgba(255,214,80,0.9)';
+    ctx.lineWidth = 3 / cam.k;
+    ctx.setLineDash([24 / cam.k, 12 / cam.k]);
+    ctx.strokeRect(0, 0, mat[0], mat[1]);
+    ctx.setLineDash([]);
+  }
+
+  // 俯瞰のとき、車の現在位置と向きを赤い三角で示す
+  _drawOverviewCar(ctx, cam, v) {
+    const m = cameraMatrix(cam, this.pr);
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.translate(v.position.x, v.position.y);
+    ctx.rotate(v.heading);
+    ctx.fillStyle = 'rgba(255,70,70,0.95)';
+    ctx.beginPath();
+    ctx.moveTo(60, 0);
+    ctx.lineTo(-40, -32);
+    ctx.lineTo(-40, 32);
+    ctx.closePath();
+    ctx.fill();
   }
 
   _drawDebugCar(ctx, cam, st, v) {
