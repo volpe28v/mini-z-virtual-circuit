@@ -27,6 +27,12 @@ export class SkidMarks {
   update(veh, st) {
     const maxAngle = (st.maxDrift * Math.PI) / 180;
     let b = -1;
+    if (veh.air > 0) {
+      // 空中は路面に触れないので痕は付かない
+      this._closeAll();
+      this._prune(veh.progress);
+      return;
+    }
     if (maxAngle > 0) {
       const ratio = Math.abs(veh.driftAngle) / maxAngle;
       for (let i = 0; i < BUCKET_EDGES.length; i++) if (ratio >= BUCKET_EDGES[i]) b = i;

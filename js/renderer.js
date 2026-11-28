@@ -541,6 +541,7 @@ export class Renderer {
     ctx.stroke(w.rightEdge);
 
     this._drawFinishLine(ctx, w.W);
+    if (!garage && st.jump > 0) this._drawJumpMarks(ctx, w.W);
     if (garage) this._drawPillars(ctx, w.garage);
     if (!this._overview && this.smoke && st.smoke > 0) this._drawSmoke(ctx, cam, r, wet);
     if (!this._overview) this._drawLighting(ctx, cam, st, w, r, m, wet);
@@ -726,6 +727,43 @@ export class Renderer {
       ctx.drawImage(sprite, S.x[i] - rad, S.y[i] - rad, rad * 2, rad * 2);
     }
     ctx.globalAlpha = 1;
+  }
+
+  // ジャンプ台 (路面の段差): 踏み切りに、暗い帯と黄色い斜線の注意マーク
+  _drawJumpMarks(ctx, W) {
+    for (const j of this.track.jumps) {
+      const c = this.track.at(j.s, this._tmp);
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.theta);
+      ctx.fillStyle = 'rgba(20,20,22,0.16)';
+      ctx.fillRect(-14, -W / 2, 28, W);
+      ctx.strokeStyle = 'rgba(244,238,226,0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-14, -W / 2);
+      ctx.lineTo(-14, W / 2);
+      ctx.moveTo(14, -W / 2);
+      ctx.lineTo(14, W / 2);
+      ctx.stroke();
+      // 注意の斜線 (道の両端)
+      ctx.fillStyle = 'rgba(238,190,40,0.7)';
+      const n = 3;
+      const sw = W * 0.12;
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < n; i++) {
+          const y0 = side * (W / 2 - sw * (i + 1));
+          ctx.beginPath();
+          ctx.moveTo(-8, y0);
+          ctx.lineTo(8, y0 + side * sw * 0.5);
+          ctx.lineTo(8, y0 + side * sw * 0.9);
+          ctx.lineTo(-8, y0 + side * sw * 0.4);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
   }
 
   _drawFinishLine(ctx, W) {

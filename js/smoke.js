@@ -57,6 +57,7 @@ export class SmokeSystem {
     this.acc[0] = this.acc[1] = 0;
     this.driftTime = 0;
     this.puff = 0;
+    this._landings = null;
   }
 
   alive(i) {
@@ -89,6 +90,16 @@ export class SmokeSystem {
 
     const amount = st.smoke;
     this.wet = st.wet ?? 0;
+    if (this._landings == null) this._landings = veh.landings || 0;
+    const landings = veh.landings || 0;
+    if (landings !== this._landings) {
+      this._landings = landings;
+      if (amount > 0) this._landing(veh, st, amount);
+    }
+    if (veh.air > 0) {
+      this.acc[0] = this.acc[1] = 0; // 空中は煙が出ない
+      return;
+    }
     if (!(amount > 0) || !(st.maxDrift > 0)) {
       this.acc[0] = this.acc[1] = 0;
       this.driftTime = 0;
@@ -128,6 +139,20 @@ export class SmokeSystem {
         this._spawn(veh, side, fx, fy, rx, ry, g, i, amount, dt);
       }
     }
+  }
+
+  // 着地: 左右の後輪から、ドリフトの有無によらず土煙を一気に出す
+  _landing(veh, st, amount) {
+    const g = carGeometry(st.carLength, st.carWidth);
+    const fx = Math.cos(veh.heading);
+    const fy = Math.sin(veh.heading);
+    const rx = -fy;
+    const ry = fx;
+    const n = Math.round(7 * Math.min(2, amount));
+    for (let w = 0; w < 2; w++) {
+      for (let k = 0; k < n; k++) this._spawn(veh, w === 0 ? -1 : 1, fx, fy, rx, ry, g, 0.9, amount, 1 / 60);
+    }
+    this.puff = 1;
   }
 
   // 出方のむらを、時間で進める。0.08〜0.25 秒ごとに目標を引き直してなめらかに追う (フレームレートによらない)

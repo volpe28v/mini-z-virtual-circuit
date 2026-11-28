@@ -197,7 +197,10 @@ function frame(now) {
     cam.px = vehicle.position.x;
     cam.py = vehicle.position.y;
     cam.heading = vehicle.heading;
-    cam.k = settings.pxPerMm * settings.courseScale;
+    // ジャンプ: 浮くと路面が遠のき (最大 9%)、着地の瞬間に少し沈んで戻る
+    const jumpAmp = Math.min(1.5, Math.max(0, settings.jump));
+    const bounce = vehicle.landT < 0.3 ? Math.sin((Math.PI * vehicle.landT) / 0.3) : 0;
+    cam.k = settings.pxPerMm * settings.courseScale * (1 - 0.09 * jumpAmp * vehicle.air + 0.03 * jumpAmp * bounce);
     cam.ax = w * settings.carX;
     cam.ay = h * settings.carY;
   }

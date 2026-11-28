@@ -21,7 +21,9 @@ export function wrapAngle(a) {
 // ridge: 提供されたコース図 (①〜⑨ の番号付き) をなぞったもの。
 // garage: 地下駐車場。5 番の目に並ぶ柱のあいだを、90° のコーナーの連続で抜ける十字形のループ (東京ドリフト風)。
 // 座標は図の px (y 下向き)。START はメインストレート (下辺) 上で、①→⑨ の順に時計回りに走る。
-const SKETCH_SCALE = 6.5; // mm / px (全長 約 13m、最小半径 約 170mm)
+const SKETCH_SCALE = 6.5;
+// ジャンプ台 (図の px): ⑦ と ⑧ の間の斜めの下り。踏み切りの位置
+const RIDGE_JUMPS = [[309, 262]]; // mm / px (全長 約 13m、最小半径 約 170mm)
 const RIDGE_POINTS = [
   [170, 517], [130, 517], [100, 515], // START → ① へ (下辺を左向き)
   [70, 508], [45, 488], [30, 458], [24, 420], [24, 380], [24, 350], // ① 左下の右コーナー、左辺を北へ
@@ -99,7 +101,7 @@ const GARAGE_POINTS = (() => {
 })();
 
 export const COURSES = {
-  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false },
+  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
@@ -227,6 +229,22 @@ export class Track {
     this.kappa = smoothPeriodic(kraw, KAPPA_SIGMA / ds);
 
     this.speedU = this.buildProfile();
+
+    // ジャンプ台: 図の点に最も近い走行距離 (踏み切り位置)
+    this.jumps = (this.course.jumps || []).map(([px, py]) => {
+      const wx = px * this.course.scale;
+      const wy = py * this.course.scale;
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < N; i++) {
+        const d = Math.hypot(this.x[i] - wx, this.y[i] - wy);
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+      return { s: best * ds };
+    });
 
     // S/F ライン: 折れ線の始点 (= コース図の START)。少し手前から走り出す
     this.finishS = 0;

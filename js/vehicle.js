@@ -8,6 +8,7 @@ const K_LOW = 1 / 1200; // これより緩いコーナーではドリフトし�
 const K_HIGH = 1 / 250; // これより急なコーナーでは最大角
 const CARRY_TAU = 0.45; // 引きずりでグリップが戻る時間定数 (秒。設定 1 のとき)
 const FEINT_LOOK_S = 0.8; // フェイントのためにコーナーを先読みする時間
+const JUMP_TIME = 0.7; // 滞空時間 (秒)
 const FEINT_ANGLE = 0.7; // フェイントの振り出し角 (最大ドリフト角に対する比。設定 1 のとき)
 
 function smoothstep(a, b, x) {
@@ -75,6 +76,11 @@ export class Vehicle {
     this._first = true;
     this._hold = 0;
     this._lap = -1;
+    this.air = 0; // 浮き具合 0〜1 (0 = 接地)
+    this._airT = -1; // 滞空の経過時間 (秒)。負なら接地
+    this.landT = 99; // 着地してからの時間 (秒)
+    this.landKick = 0; // 着地の衝撃 (着地した 1 ステップだけ 1)
+    this.landings = 0; // 着地した回数 (描画・煙が数えて、着地を取りこぼさない)
     this._compose(0);
   }
 
@@ -164,8 +170,11 @@ export class Vehicle {
     const sN = Math.min(2, Math.max(0, strength)) / 2;
     const omega = lerp(4, 9, sN) + 5 * fw; // フェイント中は素早く振る
     const zeta = lerp(0.85, 0.5, sN);
-    const acc = omega * omega * (target - this.driftAngle) - 2 * zeta * omega * this.driftRate;
+    // 空中はタイヤが路面に触れないので、グリップが効かない (角度をそのまま保つ)
+    const grip = this._airT >= 0 ? 0 : 1;
+    const acc = grip * (omega * omega * (target - this.driftAngle) - 2 * zeta * omega * this.driftRate);
     this.driftRate += acc * dt;
+    if (grip === 0) this.driftRate *= Math.exp(-dt / 0.12); // 空中は角度をほぼそのまま保つ
     // 角速度の上限 (強度に応じて 50〜150°/s)。急な角度変化を避ける
     const rateLim = (100 * (0.5 + 0.5 * Math.min(2, strength)) * DEG);
     this.driftRate = Math.min(rateLim, Math.max(-rateLim, this.driftRate));
@@ -190,8 +199,41 @@ export class Vehicle {
     this.offsetRate += oAcc * dt;
     this.offset += this.offsetRate * dt;
 
+    const before = this.progress;
     this.progress += this.speed * dt;
+    this._jump(before, dt, st, kLook);
     this._compose();
+  }
+
+  // ジャンプ台の踏み切りを通ったら飛び、一定時間で着地する。着地では車体がわずかに振られる
+  _jump(before, dt, st, kLook) {
+    const L = this.track.length;
+    this.landT += dt;
+    this.landKick = 0;
+    const amp = Math.min(1.5, Math.max(0, st.jump ?? 0));
+    if (this._airT >= 0) {
+      this._airT += dt;
+      if (this._airT >= JUMP_TIME) {
+        this._airT = -1;
+        this.air = 0;
+        this.landT = 0;
+        this.landKick = 1;
+        this.landings++;
+        // 着地の衝撃: 車体が少し振られる (次のコーナーの向きへ)
+        this.driftRate += (Math.sign(kLook) || 1) * 40 * DEG * Math.min(1, amp);
+      } else {
+        this.air = Math.sin((Math.PI * this._airT) / JUMP_TIME);
+      }
+      return;
+    }
+    if (!(amp > 0) || this.speed < 80) return;
+    for (const j of this.track.jumps) {
+      if (Math.floor((before - j.s) / L) !== Math.floor((this.progress - j.s) / L)) {
+        this._airT = 0;
+        this.air = 0;
+        break;
+      }
+    }
   }
 
   // dt 秒進める (内部は固定ステップ)。onStep を渡すと、ステップごとに呼ぶ (タイヤ痕の記録用)
