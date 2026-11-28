@@ -25,6 +25,8 @@ const SKETCH_SCALE = 6.5;
 // ジャンプ台 (図の px): ⑦ と ⑧ の間の斜めの下り。踏み切りの位置
 const RIDGE_JUMPS = [[309, 262]];
 // トンネル (図の px の [入口, 出口]): ① の入り口 (図の ① の枠の右端) から ② の手前まで。左辺を北へ向かう区間
+// 吊り橋 (図の px の [入口, 出口]): ② の出口から ③ の入り口まで。ほぼ直線の斜めの区間
+const RIDGE_BRIDGES = [[[155, 325], [192, 284]]];
 const RIDGE_TUNNELS = [[[105, 516], [24, 362]]]; // mm / px (全長 約 13m、最小半径 約 170mm)
 const RIDGE_POINTS = [
   [170, 517], [130, 517], [100, 515], // START → ① へ (下辺を左向き)
@@ -103,7 +105,7 @@ const GARAGE_POINTS = (() => {
 })();
 
 export const COURSES = {
-  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS },
+  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS, bridges: RIDGE_BRIDGES },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
@@ -248,6 +250,12 @@ export class Track {
       return best;
     };
     this.tunnels = (this.course.tunnels || []).map(([a, b]) => {
+      const i0 = nearest(a);
+      const i1 = nearest(b);
+      return { i0, i1, s0: i0 * ds, s1: i1 * ds };
+    });
+
+    this.bridges = (this.course.bridges || []).map(([a, b]) => {
       const i0 = nearest(a);
       const i1 = nearest(b);
       return { i0, i1, s0: i0 * ds, s1: i1 * ds };

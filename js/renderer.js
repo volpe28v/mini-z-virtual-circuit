@@ -10,6 +10,8 @@ const CORNER_K = 1 / 650; // この曲率より急な区間をコーナーとみ
 const RUNOFF_W = 55; // ランオフの最大幅 (mm)
 const TUNNEL_WALL = 16; // トンネルの側壁の見える幅 (mm)
 const TUNNEL_ROOF = 300; // 側壁の外側の、トンネルの上の構造物 (mm)
+const BRIDGE_WATER = 420; // 橋の下の川: 路面の端から外側へ (mm)
+const WATER_TILE_MM = 150;
 const PATH_STRIDE = 2; // 路面パスのサンプル間隔 (8mm)
 
 export class Renderer {
@@ -259,8 +261,202 @@ export class Renderer {
     const lamps = this._buildLamps(half);
     const garage = this.theme === 'garage' ? this._buildGarage(half, W) : null;
     const tunnels = this._buildTunnels(half);
-    this.world = { tunnels, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
+    const bridges = this._buildBridges(half);
+    this.world = { tunnels, bridges, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
     this.buildMarks(st);
+  }
+
+  // 吊り橋: 橋の下の川 (橋と直交して流れる)、橋の影、床板の継ぎ目、縁の桁、主ケーブルとハンガー、主塔と梁、両端の伸縮継手
+  _buildBridges(half) {
+    const t = this.track;
+    const out = [];
+    const strip = (p, a, b, d0, d1) => {
+      for (let i = a; i <= b; i++) this._off(p, i, d0, i === a);
+      for (let i = b; i >= a; i--) this._off(p, i, d1, false);
+      p.closePath();
+    };
+    for (const br of t.bridges) {
+      const a = br.i0;
+      const b = br.i1;
+      const o = { water: new Path2D(), shadow: new Path2D(), deck: new Path2D(), seams: new Path2D(), girder: new Path2D(), cables: new Path2D(), clamps: new Path2D(), towers: new Path2D(), beams: new Path2D(), plates: new Path2D() };
+      const WL = half + BRIDGE_WATER;
+      strip(o.water, a, b, -WL, WL);
+      strip(o.shadow, a + 1, b - 1, -half + 18, half + 18); // 橋の影 (川面に落ちる。横にずれる)
+      strip(o.deck, a, b, -half, half);
+      for (let i = a + 4; i < b - 2; i += Math.round(60 / t.ds)) {
+        this._off(o.seams, i, -half, true);
+        this._off(o.seams, i, half, false);
+      }
+      const cx = half + 8; // 主ケーブルの位置 (路面の端のすぐ外)
+      for (const side of [-1, 1]) {
+        strip(o.girder, a, b, side * half, side * (half + 12));
+        for (let i = a; i <= b; i++) this._off(o.cables, i, side * cx, i === a);
+        // ハンガーの付け根 (上から見ると点)
+        for (let i = a + 8; i < b - 6; i += Math.round(46 / t.ds)) {
+          const j = ((i % t.N) + t.N) % t.N;
+          const x = t.x[j] + this.nx[j] * side * cx;
+          const y = t.y[j] + this.ny[j] * side * cx;
+          o.clamps.moveTo(x + 2.2, y);
+          o.clamps.arc(x, y, 2.2, 0, 6.2832);
+        }
+      }
+      // 主塔: 両端の近くに、両側の柱 (四角) と、路面を横切る梁
+      for (const ti of [a + 10, b - 10]) {
+        for (const side of [-1, 1]) strip(o.towers, ti - 3, ti + 3, side * (half - 3), side * (half + 22));
+        this._off(o.beams, ti, -half - 14, true);
+        this._off(o.beams, ti, half + 14, false);
+      }
+      // 両端の伸縮継手 (鋼板)
+      strip(o.plates, a, a + 3, -half - 12, half + 12);
+      strip(o.plates, b - 3, b, -half - 12, half + 12);
+      // 川の流れの向き (橋に直交) は、中央の位置の接線から決める
+      const m = Math.round((a + b) / 2);
+      o.mx = t.x[m];
+      o.my = t.y[m];
+      o.angle = (t.theta[m] * 180) / Math.PI;
+      out.push(o);
+    }
+    return out;
+  }
+
+  // 川面のタイル (継ぎ目なし): 暗い青緑に、流れの向き (タイルの縦) に伸びた明暗の筋
+  _waterPattern(ctx) {
+    if (this._water) return this._water;
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    let a = 424242;
+    const rnd = () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+    g.fillStyle = '#25505e';
+    g.fillRect(0, 0, S, S);
+    // 大きな明暗のむら
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * S;
+      const y = rnd() * S;
+      const r = 18 + rnd() * 26;
+      const dark = rnd() < 0.5;
+      for (const dx of [-S, 0, S]) {
+        for (const dy of [-S, 0, S]) {
+          const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+          gr.addColorStop(0, dark ? 'rgba(8,28,38,0.35)' : 'rgba(80,140,150,0.22)');
+          gr.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = gr;
+          g.fillRect(x + dx - r, y + dy - r, 2 * r, 2 * r);
+        }
+      }
+    }
+    // 流れの筋 (縦に細長い。端はタイルの反対側にも描いてつなぐ)
+    g.lineCap = 'round';
+    for (let i = 0; i < 70; i++) {
+      const x = rnd() * S;
+      const y = rnd() * S;
+      const len = 6 + rnd() * 22;
+      const light = rnd() < 0.62;
+      g.strokeStyle = light ? `rgba(195,228,236,${(0.16 + rnd() * 0.3).toFixed(2)})` : `rgba(6,22,30,${(0.2 + rnd() * 0.25).toFixed(2)})`;
+      g.lineWidth = light ? 0.8 + rnd() * 0.9 : 1.2 + rnd() * 1.4;
+      for (const dx of [-S, 0, S]) {
+        for (const dy of [-S, 0, S]) {
+          g.beginPath();
+          g.moveTo(x + dx, y + dy);
+          g.quadraticCurveTo(x + dx + (rnd() - 0.5) * 4, y + dy + len / 2, x + dx + (rnd() - 0.5) * 3, y + dy + len);
+          g.stroke();
+        }
+      }
+    }
+    this._water = ctx.createPattern(c, 'repeat');
+    this._waterSize = S;
+    return this._water;
+  }
+
+  // 橋の下の川と橋の影 (芝・砂利のあと、縁石・路面の前に描く)
+  _drawBridgeWater(ctx) {
+    const pat = this._waterPattern(ctx);
+    const flow = ((performance.now() / 1000) * 24) % WATER_TILE_MM; // 川の流れ (mm/s)
+    for (const o of this.world.bridges) {
+      const s = WATER_TILE_MM / this._waterSize;
+      // 流れは橋の中央の位置で、橋と直交する向き (タイルの縦 = 路面の横方向)
+      pat.setTransform(new DOMMatrix().translate(o.mx, o.my).rotate(o.angle).translate(0, flow).scale(s));
+      ctx.fillStyle = pat;
+      ctx.fill(o.water);
+      // 岸: 川の両端の縁 (橋のたもと)
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(70,62,48,0.75)';
+      ctx.lineWidth = 7;
+      ctx.stroke(o.water);
+      ctx.strokeStyle = 'rgba(190,182,160,0.4)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke(o.water);
+      // 橋の影
+      ctx.fillStyle = 'rgba(2,14,22,0.42)';
+      ctx.fill(o.shadow);
+    }
+  }
+
+  // 吊り橋の見た目 (路面の上に重ねる)
+  _drawBridges(ctx) {
+    for (const o of this.world.bridges) {
+      // 床板: 鋼の板を並べた路面 (青みのある灰色を薄く重ね、約 60mm ごとの継ぎ目。上端に光、下端に影)
+      ctx.fillStyle = 'rgba(112,124,138,0.22)';
+      ctx.fill(o.deck, 'nonzero');
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = 'rgba(0,0,0,0.42)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke(o.seams);
+      ctx.save();
+      ctx.translate(0.9, 0.9);
+      ctx.strokeStyle = 'rgba(235,242,250,0.16)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke(o.seams);
+      ctx.restore();
+      // 縁の桁 (鋼): 路面のすぐ外側。縁石や芝を隠す
+      ctx.fillStyle = '#6d747c';
+      ctx.fill(o.girder, 'nonzero');
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke(o.girder);
+      // 両端の伸縮継手
+      ctx.fillStyle = '#8a8f95';
+      ctx.fill(o.plates, 'nonzero');
+      ctx.strokeStyle = 'rgba(20,22,26,0.7)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke(o.plates);
+      // 主塔の影のあと、梁と柱
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 7;
+      ctx.save();
+      ctx.translate(10, 10);
+      ctx.stroke(o.beams);
+      ctx.stroke(o.cables);
+      ctx.restore();
+      ctx.strokeStyle = '#4a5056';
+      ctx.lineWidth = 5;
+      ctx.stroke(o.beams);
+      ctx.strokeStyle = 'rgba(210,216,222,0.5)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke(o.beams);
+      ctx.fillStyle = '#5b626a';
+      ctx.fill(o.towers, 'nonzero');
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke(o.towers);
+      // 主ケーブル (太い鋼線) とハンガーの付け根
+      ctx.strokeStyle = '#2f3438';
+      ctx.lineWidth = 4.2;
+      ctx.stroke(o.cables);
+      ctx.strokeStyle = 'rgba(205,212,218,0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke(o.cables);
+      ctx.fillStyle = '#8f979f';
+      ctx.fill(o.clamps);
+    }
   }
 
   // トンネル: 側壁、その外側 (上の構造物)、床の陰、継ぎ目、天井の照明の列、入口・出口の枠
@@ -399,6 +595,7 @@ export class Renderer {
     const step = Math.round(520 / t.ds);
     for (let i = 0, n = 0; i < t.N; i += step, n++) {
       if (t.tunnels.some((tu) => i >= tu.i0 && i <= tu.i1)) continue; // トンネルの中は天井の照明
+      if (t.bridges.some((br) => i >= br.i0 - 10 && i <= br.i1 + 10)) continue; // 橋の脇は川
       const side = n & 1 ? 1 : -1;
       const d = side * (half + KERB_W + 22);
       out.push(t.x[i] + this.nx[i] * d, t.y[i] + this.ny[i] * d);
@@ -587,6 +784,7 @@ export class Renderer {
       ctx.lineWidth = 1.2;
       ctx.stroke(w.runoff);
     }
+    if (w.bridges.length) this._drawBridgeWater(ctx);
 
     const wet = Math.min(1, Math.max(0, st.wet || 0));
     // 縁石 (赤白) + 汚れ + 立体感の線
@@ -668,6 +866,7 @@ export class Renderer {
     ctx.stroke(w.rightEdge);
 
     if (w.tunnels.length) this._drawTunnels(ctx, P);
+    if (w.bridges.length) this._drawBridges(ctx);
     this._drawFinishLine(ctx, w.W);
     if (!garage && st.jump > 0) this._drawJumpMarks(ctx, w.W);
     if (garage) this._drawPillars(ctx, w.garage);
