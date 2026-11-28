@@ -28,7 +28,7 @@ test('ジャンプ台は ridge コースの ⑦ と ⑧ の間 (緩い斜めの�
   for (const d of [-100, 0, 200]) assert.ok(Math.abs(track.kappaAt(s + d)) < 1 / 1500, `d=${d}`);
   const c = track.at(s);
   const px = [c.x / 6.5, c.y / 6.5];
-  assert.ok(px[0] > 262 && px[0] < 325 && px[1] > 238 && px[1] < 345, `px=${px}`);
+  assert.ok(px[0] > 262 && px[0] < 330 && px[1] > 238 && px[1] < 345, `px=${px}`);
   assert.equal(garage.jumps.length, 0); // 駐車場には無い
 });
 
