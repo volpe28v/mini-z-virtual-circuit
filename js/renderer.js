@@ -714,37 +714,52 @@ export class Renderer {
     }
   }
 
-  // 着地の火花: 夜の暗さの上に、加算で明るく描く。粒の進行方向に伸びた太めの線 (橙 + 白い芯) と、先端の光の点。
-  // 実物の車体の外まで飛んで見えるよう、大きめに描く
+  // 着地の火花: 夜の暗さの上に、加算で明るく描く。細かい粒を大量に、粒ごとに明るさと長さを変える。
+  // 線の太さは 0.6〜1.4mm (画面で数 px) の細い線 + 先端の小さな点。明るさを 4 段階にまとめて、描画の呼び出しを減らす
   _drawSparks(ctx, m) {
     const S = this.smoke;
     if (S.sparkCount === 0) return;
     ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
-    for (let i = 0; i < S.sx.length; i++) {
-      if (S.slife[i] <= 0) continue;
-      const t = Math.min(1, 1.6 * (1 - S.sage[i] / S.slife[i])); // 後半まで明るく、最後に消える
-      const x = S.sx[i];
-      const y = S.sy[i];
-      const tx = x - S.svx[i] * 0.06;
-      const ty = y - S.svy[i] * 0.06;
-      ctx.strokeStyle = `rgba(255,140,30,${t.toFixed(3)})`;
-      ctx.lineWidth = 4.2;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(tx, ty);
-      ctx.stroke();
-      ctx.strokeStyle = `rgba(255,244,190,${t.toFixed(3)})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + (tx - x) * 0.6, y + (ty - y) * 0.6);
-      ctx.stroke();
-      ctx.fillStyle = `rgba(255,250,220,${(0.9 * t).toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(x, y, 2.6, 0, 6.2832);
-      ctx.fill();
+    const LV = 4;
+    for (let lv = 0; lv < LV; lv++) {
+      const lo = lv / LV;
+      const hi = (lv + 1) / LV;
+      const aMid = (lo + hi) / 2;
+      const glow = new Path2D();
+      const core = new Path2D();
+      const heads = new Path2D();
+      let any = false;
+      for (let i = 0; i < S.sx.length; i++) {
+        if (S.slife[i] <= 0) continue;
+        const fade = 1 - S.sage[i] / S.slife[i];
+        const t = Math.min(1, 1.5 * fade) * (0.45 + 0.55 * S.sbr[i]);
+        if (t < lo || t >= hi + (lv === LV - 1 ? 1 : 0)) continue;
+        any = true;
+        const x = S.sx[i];
+        const y = S.sy[i];
+        const len = 0.03 + 0.03 * S.sbr[i];
+        const tx = x - S.svx[i] * len;
+        const ty = y - S.svy[i] * len;
+        glow.moveTo(x, y);
+        glow.lineTo(tx, ty);
+        core.moveTo(x, y);
+        core.lineTo(x + (tx - x) * 0.5, y + (ty - y) * 0.5);
+        if (S.sbr[i] > 0.6) {
+          heads.moveTo(x + 0.9, y);
+          heads.arc(x, y, 0.9, 0, 6.2832);
+        }
+      }
+      if (!any) continue;
+      ctx.strokeStyle = `rgba(255,130,35,${Math.min(1, aMid * 0.95 + 0.1).toFixed(3)})`;
+      ctx.lineWidth = 1.4;
+      ctx.stroke(glow);
+      ctx.strokeStyle = `rgba(255,236,170,${Math.min(1, aMid + 0.1).toFixed(3)})`;
+      ctx.lineWidth = 0.65;
+      ctx.stroke(core);
+      ctx.fillStyle = `rgba(255,248,215,${Math.min(1, aMid + 0.1).toFixed(3)})`;
+      ctx.fill(heads);
     }
     ctx.globalCompositeOperation = 'source-over';
   }

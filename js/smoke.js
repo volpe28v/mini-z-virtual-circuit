@@ -3,7 +3,7 @@
 import { carGeometry } from './camera.js';
 
 export const MAX_PARTICLES = 450;
-export const MAX_SPARKS = 200; // 着地の火花の上限
+export const MAX_SPARKS = 360; // 着地の火花の上限
 export const MAX_AMOUNT = 3; // 設定「タイヤスモーク」の上限
 const MAX_ALPHA = 0.85; // 1 粒の不透明度の上限 (重なりで濃くなる)
 const DEG = 180 / Math.PI;
@@ -50,6 +50,7 @@ export class SmokeSystem {
     this.svy = new Float32Array(MAX_SPARKS);
     this.sage = new Float32Array(MAX_SPARKS);
     this.slife = new Float32Array(MAX_SPARKS); // 0 = 未使用
+    this.sbr = new Float32Array(MAX_SPARKS); // 粒ごとの明るさ・大きさ (0.35〜1)
     this.shead = 0;
     this.acc = [0, 0]; // 左右の後輪の発生タイマー
     this.driftTime = 0; // ドリフトが続いている時間 (秒)。コーナーの間のわずかな中断では急に 0 に戻らない
@@ -180,7 +181,7 @@ export class SmokeSystem {
     const rx = -fy;
     const ry = fx;
     const rnd = this.rng;
-    const n = 40;
+    const n = 90;
     for (let w = 0; w < 2; w++) {
       const side = w === 0 ? -1 : 1;
       for (let k = 0; k < n; k++) {
@@ -189,14 +190,15 @@ export class SmokeSystem {
         this.sx[i] = veh.position.x - fx * (g.wheelbase / 2) + rx * side * (g.track / 2) + (rnd() - 0.5) * 6;
         this.sy[i] = veh.position.y - fy * (g.wheelbase / 2) + ry * side * (g.track / 2) + (rnd() - 0.5) * 6;
         // 向き: 車体の外側 (横) と後ろに広がる。速さはばらつく
-        const sp = 450 + rnd() * 750; // 実物の車体 (幅 70mm・長さ 150mm) の外まで飛ぶ速さ
+        const sp = 350 + rnd() * rnd() * 1100 + rnd() * 300; // 実物の車体 (幅 70mm・長さ 150mm) の外まで飛ぶ速さ
         const ang = (rnd() - 0.5) * 2.2; // 横向きを中心に ±63°
         const lat = Math.cos(ang) * side;
         const back = Math.sin(ang) - 0.5;
         this.svx[i] = veh.velocity.x * 0.6 + (rx * lat + fx * back) * sp;
         this.svy[i] = veh.velocity.y * 0.6 + (ry * lat + fy * back) * sp;
         this.sage[i] = 0;
-        this.slife[i] = 0.4 + rnd() * 0.45;
+        this.slife[i] = 0.25 + rnd() * 0.65;
+        this.sbr[i] = 0.35 + 0.65 * rnd();
       }
     }
   }

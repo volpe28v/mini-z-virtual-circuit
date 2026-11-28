@@ -110,7 +110,7 @@ test('着地で火花が散り、短時間で消える (煙の設定が 0 でも
     if (landAt >= 0 && t - landAt > 1) after = Math.max(after, sm.sparkCount);
   }
   assert.equal(sparksBeforeLand, 0);
-  assert.ok(peak >= 60 && peak <= 200, `peak=${peak}`);
+  assert.ok(peak >= 120 && peak <= 360, `peak=${peak}`);
   assert.equal(after, 0, '1 秒後には全部消えている');
 });
 
