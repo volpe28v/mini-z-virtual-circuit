@@ -12,6 +12,11 @@ const TUNNEL_WALL = 16; // トンネルの側壁の見える幅 (mm)
 const TUNNEL_ROOF = 300; // 側壁の外側の、トンネルの上の構造物 (mm)
 const BRIDGE_WATER = 420; // 橋の下の川: 路面の端から外側へ (mm)
 const WATER_TILE_MM = 150;
+const BEACH_SAND = 11; // 砂浜: 路面の端から波打ち際まで (mm)。縦持ちの画面では路面の外側は約 18mm しか見えない
+const BEACH_WET = 4; // 波打ち際の濡れた砂
+const BEACH_SEA = 520; // 海: 波打ち際から外側へ (mm。画面の外まで届く長さ)
+const BEACH_TAPER = 380; // 砂浜の両端が草地へなじむ長さ (mm)
+const SAND_TILE_MM = 60;
 const PATH_STRIDE = 2; // 路面パスのサンプル間隔 (8mm)
 
 export class Renderer {
@@ -262,7 +267,8 @@ export class Renderer {
     const garage = this.theme === 'garage' ? this._buildGarage(half, W) : null;
     const tunnels = this._buildTunnels(half);
     const bridges = this._buildBridges(half);
-    this.world = { tunnels, bridges, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
+    const beaches = this._buildBeaches(half);
+    this.world = { tunnels, bridges, beaches, W, road, leftEdge, rightEdge, red, white, kerbOuter, kerbInner, runoff, puddles, lamps, garage };
     this.buildMarks(st);
   }
 
@@ -317,6 +323,135 @@ export class Renderer {
       out.push(o);
     }
     return out;
+  }
+
+  // 砂浜と海: 路面の外側に、砂 → 濡れた砂 → 波打ち際 (泡) → 浅瀬 → 海。両端は草地へ細くなじむ
+  _buildBeaches(half) {
+    const t = this.track;
+    const sm = (x) => {
+      const u = Math.min(1, Math.max(0, x));
+      return u * u * (3 - 2 * u);
+    };
+    return t.beaches.map((bc) => {
+      const a = bc.i0;
+      const b = bc.i1;
+      const sg = bc.side;
+      const edge = (i) => Math.min(i - a, b - i) * t.ds;
+      const f = (i) => sm(edge(i) / BEACH_TAPER * 0.25); // 砂・波打ち際は両端の近くまで幅を保つ
+      const fSea = (i) => sm(edge(i) / BEACH_TAPER); // 海の広がりはゆるやかに
+      const o = { sand: new Path2D(), wetBand: new Path2D(), sea: new Path2D(), shallow: new Path2D(), a, b, sg, half, f };
+      const strip = (p, d0, d1) => {
+        for (let i = a; i <= b; i++) this._off(p, i, sg * d0(i), i === a);
+        for (let i = b; i >= a; i--) this._off(p, i, sg * d1(i), false);
+        p.closePath();
+      };
+      const shore = (i) => half + (BEACH_SAND + BEACH_WET) * f(i);
+      strip(o.sand, () => half - 1, shore); // 濡れた砂の下も砂
+      strip(o.wetBand, (i) => half + BEACH_SAND * f(i), shore);
+      strip(o.sea, shore, (i) => shore(i) + BEACH_SEA * fSea(i));
+      strip(o.shallow, shore, (i) => shore(i) + 12 * f(i));
+      const m = (a + b) >> 1;
+      o.mx = t.x[m];
+      o.my = t.y[m];
+      o.angle = (t.theta[m] * 180) / Math.PI;
+      return o;
+    });
+  }
+
+  // 砂のタイル (継ぎ目なし): 淡い黄土色に、細かい粒と風紋のむら
+  _sandPattern(ctx) {
+    if (this._sand) return this._sand;
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    let a = 777123;
+    const rnd = () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+    g.fillStyle = '#cdb98c';
+    g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 16; i++) {
+      const x = rnd() * S;
+      const y = rnd() * S;
+      const r = 16 + rnd() * 26;
+      const dark = rnd() < 0.5;
+      for (const dx of [-S, 0, S]) {
+        for (const dy of [-S, 0, S]) {
+          const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+          gr.addColorStop(0, dark ? 'rgba(120,96,56,0.22)' : 'rgba(250,238,205,0.26)');
+          gr.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = gr;
+          g.fillRect(x + dx - r, y + dy - r, 2 * r, 2 * r);
+        }
+      }
+    }
+    for (let i = 0; i < 900; i++) {
+      const x = rnd() * S;
+      const y = rnd() * S;
+      const light = rnd() < 0.5;
+      g.fillStyle = light ? `rgba(255,246,222,${(0.25 + rnd() * 0.35).toFixed(2)})` : `rgba(110,88,52,${(0.2 + rnd() * 0.3).toFixed(2)})`;
+      const r = 0.35 + rnd() * 0.6;
+      for (const dx of [-S, 0, S]) {
+        for (const dy of [-S, 0, S]) g.fillRect(x + dx, y + dy, r, r);
+      }
+    }
+    this._sand = ctx.createPattern(c, 'repeat');
+    this._sandSize = S;
+    return this._sand;
+  }
+
+  // 砂浜と海 (芝・砂利のあと、縁石・路面の前に描く)
+  _drawBeaches(ctx) {
+    const sandPat = this._sandPattern(ctx);
+    const seaPat = this._waterPattern(ctx);
+    const tsec = performance.now() / 1000;
+    for (const o of this.world.beaches) {
+      const { a, b, sg, half, f } = o;
+      // 砂
+      sandPat.setTransform(new DOMMatrix().scale(SAND_TILE_MM / this._sandSize));
+      ctx.fillStyle = sandPat;
+      ctx.fill(o.sand);
+      // 海: 波は岸 (法線の向き) へ寄せる
+      const swell = (tsec * 18) % WATER_TILE_MM;
+      seaPat.setTransform(new DOMMatrix().translate(o.mx, o.my).rotate(o.angle).translate(0, -sg * swell).scale(WATER_TILE_MM / this._waterSize));
+      ctx.fillStyle = seaPat;
+      ctx.fill(o.sea);
+      ctx.fillStyle = 'rgba(28,135,158,0.32)'; // 川より明るい青緑
+      ctx.fill(o.sea);
+      ctx.fillStyle = 'rgba(130,220,205,0.30)'; // 浅瀬
+      ctx.fill(o.shallow);
+      // 濡れた砂 (固定の帯)
+      ctx.fillStyle = 'rgba(96,78,48,0.42)';
+      ctx.fill(o.wetBand);
+      // 寄せては引く波: 泡の線の位置が時間と場所でゆれる
+      const tide = new Path2D();
+      const foam = new Path2D();
+      const foam2 = new Path2D();
+      const base = (i) => half + (BEACH_SAND + BEACH_WET) * f(i);
+      const wob = (i, k) => f(i) * (k * (BEACH_WET * 0.9) * Math.sin(tsec * 0.9 + i * 0.06) + 1.4 * Math.sin(tsec * 1.7 + i * 0.17 + 1.3));
+      for (let i = a; i <= b; i += 2) this._off(tide, i, sg * (base(i) + wob(i, 1)), i === a);
+      for (let i = b; i >= a; i -= 2) this._off(tide, i, sg * (half + BEACH_SAND * f(i)), false);
+      tide.closePath();
+      ctx.fillStyle = 'rgba(70,56,34,0.3)'; // 引いた後の濡れ跡
+      ctx.fill(tide);
+      for (let i = a; i <= b; i += 2) this._off(foam, i, sg * (base(i) + wob(i, 1)), i === a);
+      for (let i = a; i <= b; i += 2) this._off(foam2, i, sg * (base(i) + wob(i, 1) + 3.5 * f(i) + 1.2 * f(i) * Math.sin(i * 0.4)), i === a);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(235,248,248,0.55)';
+      ctx.lineWidth = 2.4;
+      ctx.stroke(foam);
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 0.9;
+      ctx.stroke(foam);
+      ctx.strokeStyle = 'rgba(225,245,245,0.28)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke(foam2);
+    }
   }
 
   // 川面のタイル (継ぎ目なし): 暗い青緑に、流れの向き (タイルの縦) に伸びた明暗の筋
@@ -597,6 +732,7 @@ export class Renderer {
       if (t.tunnels.some((tu) => i >= tu.i0 && i <= tu.i1)) continue; // トンネルの中は天井の照明
       if (t.bridges.some((br) => i >= br.i0 - 10 && i <= br.i1 + 10)) continue; // 橋の脇は川
       const side = n & 1 ? 1 : -1;
+      if (t.beaches.some((bc) => bc.side === side && i >= bc.i0 - 10 && i <= bc.i1 + 10)) continue; // 砂浜の側には街灯が無い
       const d = side * (half + KERB_W + 22);
       out.push(t.x[i] + this.nx[i] * d, t.y[i] + this.ny[i] * d);
     }
@@ -784,6 +920,7 @@ export class Renderer {
       ctx.lineWidth = 1.2;
       ctx.stroke(w.runoff);
     }
+    if (w.beaches.length) this._drawBeaches(ctx);
     if (w.bridges.length) this._drawBridgeWater(ctx);
 
     const wet = Math.min(1, Math.max(0, st.wet || 0));

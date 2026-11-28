@@ -27,6 +27,8 @@ const RIDGE_JUMPS = [[324, 238]];
 // トンネル (図の px の [入口, 出口]): ① の入り口 (図の ① の枠の右端) から ② の手前まで。左辺を北へ向かう区間
 // 吊り橋 (図の px の [入口, 出口]): ② の出口から ③ の入り口まで。ほぼ直線の斜めの区間
 const RIDGE_BRIDGES = [[[155, 325], [192, 284]]];
+// 海の砂浜 (図の px): [入口, 出口, 側]。側は進行方向の左が -1 (法線は右向きが正)
+const RIDGE_BEACHES = [[[246, 32], [400, 106], -1]]; // ④ の出口 → ⑥ の入り口。左 (コースの外側) が砂浜と海
 const RIDGE_TUNNELS = [
   [[105, 516], [24, 362]], // ① 入り口 → ② の手前
   [[263, 344], [310, 431]], // ⑧ のカーブが始まる直前 → コーナーの出口
@@ -108,7 +110,7 @@ const GARAGE_POINTS = (() => {
 })();
 
 export const COURSES = {
-  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS, bridges: RIDGE_BRIDGES },
+  ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS, bridges: RIDGE_BRIDGES, beaches: RIDGE_BEACHES },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
@@ -262,6 +264,12 @@ export class Track {
       const i0 = nearest(a);
       const i1 = nearest(b);
       return { i0, i1, s0: i0 * ds, s1: i1 * ds };
+    });
+
+    this.beaches = (this.course.beaches || []).map(([a, b, side]) => {
+      const i0 = nearest(a);
+      const i1 = nearest(b);
+      return { i0, i1, s0: i0 * ds, s1: i1 * ds, side };
     });
 
     // ジャンプ台: 図の点に最も近い走行距離 (踏み切り位置)
