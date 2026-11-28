@@ -3,6 +3,7 @@
 import { carGeometry } from './camera.js';
 
 export const MAX_PARTICLES = 450;
+export const MAX_SPARKS = 64; // 着地の火花の上限
 export const MAX_AMOUNT = 3; // 設定「タイヤスモーク」の上限
 const MAX_ALPHA = 0.85; // 1 粒の不透明度の上限 (重なりで濃くなる)
 const DEG = 180 / Math.PI;
@@ -42,6 +43,14 @@ export class SmokeSystem {
     this.r1 = new Float32Array(n);
     this.a0 = new Float32Array(n); // 不透明度の最大値
     this.head = 0;
+    // 火花 (着地で後輪から散る。短命で、ワールドに固定)
+    this.sx = new Float32Array(MAX_SPARKS);
+    this.sy = new Float32Array(MAX_SPARKS);
+    this.svx = new Float32Array(MAX_SPARKS);
+    this.svy = new Float32Array(MAX_SPARKS);
+    this.sage = new Float32Array(MAX_SPARKS);
+    this.slife = new Float32Array(MAX_SPARKS); // 0 = 未使用
+    this.shead = 0;
     this.acc = [0, 0]; // 左右の後輪の発生タイマー
     this.driftTime = 0; // ドリフトが続いている時間 (秒)。コーナーの間のわずかな中断では急に 0 に戻らない
     this.flow = [1, 1]; // 左右の後輪ごとの出方のむら (平均 1)
@@ -54,6 +63,7 @@ export class SmokeSystem {
 
   reset() {
     this.life.fill(0);
+    this.slife.fill(0);
     this.acc[0] = this.acc[1] = 0;
     this.driftTime = 0;
     this.puff = 0;
@@ -64,6 +74,12 @@ export class SmokeSystem {
     return this.life[i] > 0;
   }
 
+  get sparkCount() {
+    let n = 0;
+    for (let i = 0; i < MAX_SPARKS; i++) if (this.slife[i] > 0) n++;
+    return n;
+  }
+
   get count() {
     let n = 0;
     for (let i = 0; i < this.cap; i++) if (this.life[i] > 0) n++;
@@ -72,6 +88,20 @@ export class SmokeSystem {
 
   // 粒を進める + 新しい粒を出す。veh は Vehicle (position, heading, driftAngle, speed, velocity)、st は設定。
   update(dt, veh, st) {
+    // 火花
+    for (let i = 0; i < MAX_SPARKS; i++) {
+      if (this.slife[i] <= 0) continue;
+      this.sage[i] += dt;
+      if (this.sage[i] >= this.slife[i]) {
+        this.slife[i] = 0;
+        continue;
+      }
+      this.sx[i] += this.svx[i] * dt;
+      this.sy[i] += this.svy[i] * dt;
+      const drag = Math.exp(-3.5 * dt);
+      this.svx[i] *= drag;
+      this.svy[i] *= drag;
+    }
     // 既存の粒
     for (let i = 0; i < this.cap; i++) {
       if (this.life[i] <= 0) continue;
@@ -94,6 +124,7 @@ export class SmokeSystem {
     const landings = veh.landings || 0;
     if (landings !== this._landings) {
       this._landings = landings;
+      this._sparks(veh, st);
       if (amount > 0) this._landing(veh, st, amount);
     }
     if (veh.air > 0) {
@@ -137,6 +168,35 @@ export class SmokeSystem {
       while (this.acc[w] >= 1) {
         this.acc[w] -= 1;
         this._spawn(veh, side, fx, fy, rx, ry, g, i, amount, dt);
+      }
+    }
+  }
+
+  // 着地の火花: 左右の後輪から、車体の外側・後ろへ勢いよく散る (煙の設定とは別。ジャンプ 0 なら出ない = 着地が起きない)
+  _sparks(veh, st) {
+    const g = carGeometry(st.carLength, st.carWidth);
+    const fx = Math.cos(veh.heading);
+    const fy = Math.sin(veh.heading);
+    const rx = -fy;
+    const ry = fx;
+    const rnd = this.rng;
+    const n = 12;
+    for (let w = 0; w < 2; w++) {
+      const side = w === 0 ? -1 : 1;
+      for (let k = 0; k < n; k++) {
+        const i = this.shead;
+        this.shead = (this.shead + 1) % MAX_SPARKS;
+        this.sx[i] = veh.position.x - fx * (g.wheelbase / 2) + rx * side * (g.track / 2) + (rnd() - 0.5) * 6;
+        this.sy[i] = veh.position.y - fy * (g.wheelbase / 2) + ry * side * (g.track / 2) + (rnd() - 0.5) * 6;
+        // 向き: 車体の外側 (横) と後ろに広がる。速さはばらつく
+        const sp = 160 + rnd() * 380;
+        const ang = (rnd() - 0.5) * 2.2; // 横向きを中心に ±63°
+        const lat = Math.cos(ang) * side;
+        const back = Math.sin(ang) - 0.5;
+        this.svx[i] = veh.velocity.x * 0.6 + (rx * lat + fx * back) * sp;
+        this.svy[i] = veh.velocity.y * 0.6 + (ry * lat + fy * back) * sp;
+        this.sage[i] = 0;
+        this.slife[i] = 0.22 + rnd() * 0.3;
       }
     }
   }

@@ -86,6 +86,34 @@ test('空中はタイヤ痕が付かず、煙も出ない。着地で土煙が�
   assert.ok(landBurst >= 8, `着地の土煙 ${landBurst}`);
 });
 
+test('着地で火花が散り、短時間で消える (煙の設定が 0 でも出る)。着地以外では出ない', () => {
+  const st = { ...defaults(), smoke: 0 };
+  const sm = new SmokeSystem(5);
+  const v = new Vehicle(track);
+  v.reset(0);
+  let peak = 0;
+  let lastLand = 0;
+  let landAt = -1;
+  let t = 0;
+  let sparksBeforeLand = 0;
+  let after = 0;
+  while (v.progress < 1.2 * track.length) {
+    v.update(1 / 60, st);
+    sm.update(1 / 60, v, st);
+    t += 1 / 60;
+    if (v.landings !== lastLand) {
+      lastLand = v.landings;
+      landAt = t;
+    }
+    if (landAt < 0) sparksBeforeLand += sm.sparkCount;
+    peak = Math.max(peak, sm.sparkCount);
+    if (landAt >= 0 && t - landAt > 0.7) after = Math.max(after, sm.sparkCount);
+  }
+  assert.equal(sparksBeforeLand, 0);
+  assert.ok(peak >= 20 && peak <= 64, `peak=${peak}`);
+  assert.equal(after, 0, '0.7 秒後には全部消えている');
+});
+
 test('ジャンプしても角度の上限と滑らかさを守り、周回して戻ってくる', () => {
   const st = defaults();
   const { v, log } = run(st, 3);

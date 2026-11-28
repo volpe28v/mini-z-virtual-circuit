@@ -547,6 +547,7 @@ export class Renderer {
     if (!this._overview) this._drawLighting(ctx, cam, st, w, r, m, wet);
     const rain = Math.min(1, Math.max(0, st.rain ?? st.wet ?? 0));
     if (rain > 0.2 && !this._overview) this._drawRain(ctx, cam, r, rain);
+    if (!this._overview && this.smoke) this._drawSparks(ctx, m);
   }
 
   // 地下駐車場の床: 駐車枠の線、駐車している車。柱は縁石のあとで描く (_drawPillars)
@@ -711,6 +712,36 @@ export class Renderer {
       ctx.strokeStyle = `rgba(215,228,245,${al[g]})`;
       ctx.stroke(groups[g]);
     }
+  }
+
+  // 着地の火花: 夜の暗さの上に、加算で明るく描く。粒の進行方向に伸びた短い線 (橙 + 中心の白)
+  _drawSparks(ctx, m) {
+    const S = this.smoke;
+    if (S.sparkCount === 0) return;
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (let i = 0; i < S.sx.length; i++) {
+      if (S.slife[i] <= 0) continue;
+      const t = 1 - S.sage[i] / S.slife[i];
+      const x = S.sx[i];
+      const y = S.sy[i];
+      const tx = x - S.svx[i] * 0.05;
+      const ty = y - S.svy[i] * 0.05;
+      ctx.strokeStyle = `rgba(255,150,40,${(0.95 * t).toFixed(3)})`;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,236,170,${(1 * t).toFixed(3)})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (tx - x) * 0.5, y + (ty - y) * 0.5);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   _drawSmoke(ctx, cam, viewR, wet = 0) {
