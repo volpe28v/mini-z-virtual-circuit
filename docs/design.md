@@ -243,6 +243,8 @@ s は周回しても戻らないので、周ごとに違うラインになり、
 
 ### 9.5f コースの周辺: トンネル
 
+(ridge には 2 つ: ① の入り口 → ② の手前と、⑧ 全体 (`RIDGE_TUNNELS`)。⑧ の入口はジャンプ台の約 100mm 先で、着地はトンネルの中になる。)
+
 `COURSES.ridge.tunnels` に、図の px で [入口, 出口] を書く (① の入り口 [105,516] → ② の手前 [24,362]。約 1.2m)。`Track.tunnels` = 最も近いサンプル (i0, i1) と走行距離 (s0, s1)。
 
 描画 (`Renderer._buildTunnels` / `_drawTunnels` / `_drawTunnelLights`): 区間のパスを作っておくだけで、毎フレームの塗りは数回。
