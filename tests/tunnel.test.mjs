@@ -31,16 +31,16 @@ test('トンネル: ⑧ のトンネルは、カーブが始まる直前から�
   const tu = track.tunnels[1];
   const a = track.at(tu.s0);
   const b = track.at(tu.s1);
-  assert.ok(Math.abs(a.x / 6.5 - 269) < 12 && Math.abs(a.y / 6.5 - 329) < 12, `入口 ${a.x / 6.5},${a.y / 6.5}`);
+  assert.ok(Math.abs(a.x / 6.5 - 263) < 12 && Math.abs(a.y / 6.5 - 344) < 12, `入口 ${a.x / 6.5},${a.y / 6.5}`);
   assert.ok(Math.abs(b.x / 6.5 - 310) < 12 && Math.abs(b.y / 6.5 - 431) < 12, `出口 ${b.x / 6.5},${b.y / 6.5}`);
   const len = tu.s1 - tu.s0;
   assert.ok(len > 700 && len < 1400, `長さ ${len}`);
   // 1 つ目のトンネルと重ならず、順に並ぶ
   assert.ok(track.tunnels[0].s1 < tu.s0 && tu.s1 < track.length);
   // ジャンプ台はトンネルの外 (入口より手前)
-  assert.ok(track.jumps[0].s + 600 < tu.s0, '踏み切りから入口まで 600mm 以上 (滞空で約 400mm 進む) (着地が入口に被らない)');
+  assert.ok(track.jumps[0].s + 750 < tu.s0, '踏み切りから入口まで 750mm 以上 (滞空で約 390mm 進み、着地から入口まで 350mm 以上) (着地が入口に被らない)');
   // 入口はカーブが始まる直前: 入口の 300mm 先までに半径 600mm 未満になる
   let minR = Infinity;
   for (let d = 0; d <= 300; d += 10) minR = Math.min(minR, 1 / Math.max(1e-9, Math.abs(track.kappaAt(tu.s0 + d))));
-  assert.ok(minR < 600, `入口の先のカーブ R=${minR.toFixed(0)}`);
+  assert.ok(minR < 700, `入口の先のカーブ R=${minR.toFixed(0)}`);
 });

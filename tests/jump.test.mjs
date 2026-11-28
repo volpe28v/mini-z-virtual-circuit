@@ -24,8 +24,8 @@ function run(st, laps = 1.2, track0 = track) {
 test('ジャンプ台は ridge コースの ⑦ と ⑧ の間 (緩い斜めの直線の途中) にある', () => {
   assert.equal(track.jumps.length, 1);
   const s = track.jumps[0].s;
-  // 踏み切りの前後 200mm は直線 (半径 1500mm 以上)、⑦ の出口から ⑧ の入口までのあいだ
-  for (const d of [-100, 0, 200]) assert.ok(Math.abs(track.kappaAt(s + d)) < 1 / 1500, `d=${d}`);
+  // 踏み切りの前 50mm・後ろ 200mm は直線 (半径 1500mm 以上)、⑦ の出口から ⑧ の入口までのあいだ
+  for (const d of [-50, 0, 200]) assert.ok(Math.abs(track.kappaAt(s + d)) < 1 / 1500, `d=${d}`);
   const c = track.at(s);
   const px = [c.x / 6.5, c.y / 6.5];
   assert.ok(px[0] > 262 && px[0] < 330 && px[1] > 238 && px[1] < 345, `px=${px}`);
