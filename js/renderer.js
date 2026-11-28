@@ -795,7 +795,7 @@ export class Renderer {
     // 写真の位置の区間 (Track.padLines)。基本は外側の 1 本で、中央ラインが部分的に入る
     const groups = t.padLines.map((l) => {
       const inRange = (i) => (l.i0 <= l.i1 ? i >= l.i0 && i <= l.i1 : i >= l.i0 || i <= l.i1);
-      return dashes(l.side * PAD_LINE, inRange);
+      return dashes(l.side * (l.d || PAD_LINE), inRange);
     });
     return { art, S, swirl: sw, dashes: groups.flatMap((b) => b.map((p, i) => [p, i])) };
   }

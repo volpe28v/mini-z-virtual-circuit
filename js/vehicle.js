@@ -63,6 +63,8 @@ export class Vehicle {
     const dk = (track.course && track.course.driftK) || {};
     this.kLow = dk.low ?? K_LOW;
     this.kHigh = dk.high ?? K_HIGH;
+    this.driftGain = dk.gain ?? 1; // 最大角への倍率 (広い面のトラックは、大きな角度で滑り続ける)
+    this.slideGain = dk.slide ?? 1; // コーナーの外へ膨らむ量への倍率
     this.reset();
   }
 
@@ -135,7 +137,7 @@ export class Vehicle {
     const g0 = smoothstep(this.kLow, this.kHigh, Math.abs(k0));
 
     const strength = st.driftStrength;
-    const maxD = st.maxDrift * DEG;
+    const maxD = st.maxDrift * DEG * this.driftGain;
     // ウェット路面はグリップが低く、角度が深く、長く滑る
     const wet = Math.min(1, Math.max(0, st.wet ?? 0));
     const amp = Math.min(1, strength) * (0.65 + 0.35 * u) * (1 + 0.15 * wet);
@@ -191,12 +193,12 @@ export class Vehicle {
     const wander = Math.min(2, Math.max(0, st.wander ?? 0));
     const wTarget = wander * 0.3 * st.trackWidth * wanderAt(this.progress) * (1 - 0.6 * g0);
     let oTarget =
-      -Math.sign(this._hold) * Math.min(1, Math.abs(this._hold) / Math.max(1e-6, maxD * 0.8)) * 0.14 * st.trackWidth * Math.min(1, strength) +
+      -Math.sign(this._hold) * Math.min(1, Math.abs(this._hold) / Math.max(1e-6, maxD * 0.8)) * 0.14 * this.slideGain * st.trackWidth * Math.min(1, strength) +
       // フェイント中は、車体を振った側 (コーナーの外側) へ少し寄る
       -(this._feintDir || 0) * this._feintW * 0.06 * st.trackWidth * Math.min(1, feint) +
       this.offsetBias +
       wTarget;
-    const oLim = 0.36 * st.trackWidth; // 車体が道幅から大きくはみ出さないよう、目標を丸める
+    const oLim = 0.36 * (1 + Math.max(0, this.slideGain - 1) * 0.5) * st.trackWidth; // 車体が道幅から大きくはみ出さないよう、目標を丸める
     oTarget = Math.min(oLim, Math.max(-oLim, oTarget));
     const oOmega = 2.5;
     const oAcc = oOmega * oOmega * (oTarget - this.offset) - 2 * oOmega * this.offsetRate;

@@ -114,13 +114,13 @@ const GARAGE_POINTS = (() => {
 // → S 字で中央の丸いロゴの左へ → ロゴの周りを左回りに 270° → 上の青いエリアを右回りに 180° → 右の大きな輪を右回りに 180°
 // → 下辺のストレートへ戻る。輪と輪の中央の交差部は通らない。
 const DDLABO_SCALE = 2400 / 1331;
-// 白い破線 (写真の位置)。側: 進行方向の左が -1、右が +1。始点 → 終点へ、走る向きにたどる区間 (終点が先なら周回の継ぎ目をまたぐ)。
+// 白い破線 (写真の位置)。側: 進行方向の左が -1、右が +1。d: 走行ラインの中心からの距離 (mm。外側の線は、斜めに滑る車体 (150 × 70mm) が被らないよう 120mm)。始点 → 終点へ、走る向きにたどる区間 (終点が先なら周回の継ぎ目をまたぐ)。
 // 基本は外側 (進行方向の左) の 1 本。中央ライン (内側の円弧) が、写真のとおり部分的に入る。
 const DDLABO_LINES = [
-  { side: -1, from: [806, 300], to: [595, 255] }, // 外側: 青いエリアの左 → 上 → 右の大きな輪 → 下辺 → 左の輪 (周回の継ぎ目をまたぐ)
-  { side: 1, from: [55, 600], to: [55, 290] }, // 中央: 左の輪の左辺の内側
-  { side: 1, from: [1250, 590], to: [1090, 712] }, // 中央: 右の輪の右下の内側
-  { side: -1, from: [1085, 530], to: [1035, 385] }, // 中央: ロゴの周りの右側
+  { side: -1, d: 120, from: [806, 300], to: [595, 255] }, // 外側: 青いエリアの左 → 上 → 右の大きな輪 → 下辺 → 左の輪 (周回の継ぎ目をまたぐ)
+  { side: 1, d: 90, from: [55, 600], to: [55, 290] }, // 中央: 左の輪の左辺の内側
+  { side: 1, d: 90, from: [1250, 590], to: [1090, 712] }, // 中央: 右の輪の右下の内側
+  { side: -1, d: 90, from: [1085, 530], to: [1035, 385] }, // 中央: ロゴの周りの右側
 ];
 const DDLABO_POINTS = (() => {
   const pts = [];
@@ -172,7 +172,7 @@ const DDLABO_POINTS = (() => {
 
 export const COURSES = {
   ridge: { id: 'ridge', name: 'Ridge 風サーキット', points: RIDGE_POINTS, scale: SKETCH_SCALE, theme: 'circuit', indoor: false, jumps: RIDGE_JUMPS, tunnels: RIDGE_TUNNELS, bridges: RIDGE_BRIDGES, beaches: RIDGE_BEACHES },
-  ddlabo: { id: 'ddlabo', name: 'DDL M', points: DDLABO_POINTS, scale: DDLABO_SCALE, theme: 'pad', indoor: false, studio: true, mat: [2400, 1500], padLines: DDLABO_LINES, driftK: { low: 1 / 2500, high: 1 / 520 } },
+  ddlabo: { id: 'ddlabo', name: 'DDL M', points: DDLABO_POINTS, scale: DDLABO_SCALE, theme: 'pad', indoor: false, studio: true, mat: [2400, 1500], padLines: DDLABO_LINES, driftK: { low: 1 / 2500, high: 1 / 520, gain: 1.35, slide: 0 } },
   garage: { id: 'garage', name: '地下駐車場 (ドリフト)', points: GARAGE_POINTS, scale: 6.5, theme: 'garage', indoor: true, pillars: GARAGE_PILLARS },
 };
 export const COURSE_IDS = Object.keys(COURSES);
@@ -334,7 +334,7 @@ export class Track {
       return { i0, i1, s0: i0 * ds, s1: i1 * ds, side };
     });
 
-    this.padLines = (this.course.padLines || []).map(({ side, from, to }) => ({ side, i0: nearest(from), i1: nearest(to) }));
+    this.padLines = (this.course.padLines || []).map(({ side, d, from, to }) => ({ side, d, i0: nearest(from), i1: nearest(to) }));
 
     // ジャンプ台: 図の点に最も近い走行距離 (踏み切り位置)
     this.jumps = (this.course.jumps || []).map(([px, py]) => {

@@ -125,3 +125,70 @@ test('DDLabo 風: 白線は外側 (進行方向の左) の 1 本が基本で、�
   const cx = 375 * dd.course.scale; // 左の輪の中心 (図の px × scale)
   assert.ok(Math.hypot(px - cx, py - 445 * dd.course.scale) < Math.hypot(dd.x[mid] - cx, dd.y[mid] - 445 * dd.course.scale), '内側の線は輪の中心に近い');
 });
+
+test('DDLabo 風: 大きな輪 (左・右) でも、ドリフトしっぱなし (角度 38° 以上を保ち、道の中央を滑る)', () => {
+  const st = defaults();
+  const v = new Vehicle(dd);
+  v.reset(0);
+  let inLoop = 0;
+  let deep = 0;
+  let maxOut = 0;
+  let peak = 0;
+  while (v.progress < 3 * dd.length) {
+    v.update(1 / 60, st);
+    if (v.progress < dd.length) continue; // 1 周目は立ち上がり
+    const k = dd.kappaAt(v.progress);
+    // 左右の大きな輪 (半径 450〜700mm の右回り)
+    if (k > 1 / 700 && k < 1 / 450) {
+      inLoop++;
+      if (v.driftAngle * DEG > 38) deep++;
+      maxOut = Math.max(maxOut, Math.abs(v.offset));
+      peak = Math.max(peak, v.driftAngle * DEG);
+    }
+  }
+  assert.ok(inLoop > 800, `輪の中のステップ数 ${inLoop}`);
+  assert.ok(deep / inLoop > 0.8, `38° 以上を保った割合 ${(deep / inLoop).toFixed(2)}`);
+  assert.ok(peak < 55, `最大 ${peak.toFixed(0)}°`);
+  assert.ok(maxOut < 30, `中心のずれ ${maxOut.toFixed(0)}mm (道の中央を滑る)`);
+});
+
+test('DDLabo 風: 大きな輪で、車体の四隅が外側の白線 (外へ 120mm) に被らない', () => {
+  const st = defaults();
+  const v = new Vehicle(dd);
+  v.reset(0);
+  const Lc = st.carLength;
+  const Wc = st.carWidth;
+  let outMax = 0;
+  let n = 0;
+  while (v.progress < 3 * dd.length) {
+    v.update(1 / 60, st);
+    if (v.progress < dd.length) continue;
+    const k = dd.kappaAt(v.progress);
+    if (!(k > 1 / 700 && k < 1 / 450)) continue;
+    const hint = Math.round((v.progress % dd.length) / dd.ds);
+    const c = Math.cos(v.heading);
+    const s = Math.sin(v.heading);
+    for (const [a, b] of [[Lc / 2, Wc / 2], [Lc / 2, -Wc / 2], [-Lc / 2, Wc / 2], [-Lc / 2, -Wc / 2]]) {
+      const x = v.position.x + a * c - b * s;
+      const y = v.position.y + a * s + b * c;
+      let bi = hint;
+      let bd = Infinity;
+      for (let d = -60; d <= 60; d++) {
+        const i = (((hint + d) % dd.N) + dd.N) % dd.N;
+        const dist = Math.hypot(x - dd.x[i], y - dd.y[i]);
+        if (dist < bd) {
+          bd = dist;
+          bi = i;
+        }
+      }
+      const th = dd.theta[bi];
+      const side = (x - dd.x[bi]) * -Math.sin(th) + (y - dd.y[bi]) * Math.cos(th); // 進行方向の右が正
+      outMax = Math.max(outMax, -side); // 左 (外側) への張り出し
+    }
+    n++;
+  }
+  assert.ok(n > 800);
+  const lineD = dd.padLines[0].d;
+  assert.equal(lineD, 120);
+  assert.ok(outMax < lineD - 20, `車体の四隅の外側への張り出し ${outMax.toFixed(0)}mm (外側の白線は ${lineD}mm)`);
+});
