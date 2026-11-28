@@ -4,27 +4,30 @@ import { Track, wrapAngle } from '../js/track.js';
 import { Vehicle } from '../js/vehicle.js';
 import { cameraMatrix, worldToScreen, viewRadiusMm, carGeometry } from '../js/camera.js';
 import { simulateRubber } from '../js/marks.js';
-import { defaults, sanitize, loadSettings, saveSettings, guessPxPerMm, SCHEMA, STORAGE_KEY } from '../js/settings.js';
+import { defaults, sanitize, loadSettings, saveSettings, fitPxPerMm, SCHEMA, STORAGE_KEY } from '../js/settings.js';
 
-test('設定: 既定値はすべて範囲内で、画面実寸の推定がある', () => {
-  const d = defaults({ screenWidth: 744, screenHeight: 1133 });
+test('設定: 既定値はすべて範囲内で、縮尺は画面の短辺に合わせる', () => {
+  const d = defaults();
   for (const s of SCHEMA) assert.ok(d[s.key] >= s.min && d[s.key] <= s.max, s.key);
   assert.equal(d.carX, 0.5);
   assert.equal(d.carY, 0.6);
   assert.equal(d.showCar, false);
-  assert.equal(d.pxPerMm, 6.42);
-  assert.equal(guessPxPerMm(768, 1024), 5.2);
-  assert.equal(guessPxPerMm(1200, 800), 5.2);
-  assert.equal(guessPxPerMm(390, 844), 3.78);
+  assert.equal(d.pxPerMm, undefined);
+  // 短辺 156mm: 縦横どちらの向きでも同じ、長辺には依存しない
+  assert.ok(Math.abs(fitPxPerMm(810, 1080) - 5.19) < 0.01);
+  assert.equal(fitPxPerMm(810, 1080), fitPxPerMm(1080, 810));
+  assert.equal(fitPxPerMm(810, 1080), fitPxPerMm(810, 2000));
+  assert.ok(Math.abs(fitPxPerMm(390, 844) - 2.5) < 0.01);
+  assert.equal(fitPxPerMm(0, 0), 5.2);
 });
 
 test('設定: 不正値は範囲に収めるか既定に戻す', () => {
-  const s = sanitize({ speed: 99999, maxDrift: -5, carX: 'x', showCar: 'yes', pxPerMm: NaN, unknown: 1 });
+  const s = sanitize({ speed: 99999, maxDrift: -5, carX: 'x', showCar: 'yes', pxPerMm: 9, unknown: 1 });
   assert.equal(s.speed, 1600);
   assert.equal(s.maxDrift, 0);
   assert.equal(s.carX, 0.5);
   assert.equal(s.showCar, false);
-  assert.ok(Number.isFinite(s.pxPerMm));
+  assert.equal(s.pxPerMm, undefined); // 縮尺は保存しない
   assert.equal(s.unknown, undefined);
   assert.deepEqual(sanitize(null), defaults());
 });
@@ -43,12 +46,10 @@ test('設定: localStorage への保存と復元、壊れた JSON は既定値',
   const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   const d = defaults();
   d.speed = 800;
-  d.pxPerMm = 5.9;
   d.showCar = true;
   assert.ok(saveSettings(storage, d));
   const r = loadSettings(storage);
   assert.equal(r.speed, 800);
-  assert.equal(r.pxPerMm, 5.9);
   assert.equal(r.showCar, true);
   store.set(STORAGE_KEY, '{broken');
   assert.deepEqual(loadSettings(storage), defaults());

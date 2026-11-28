@@ -1,4 +1,4 @@
-// 設定のスキーマ・既定値・検証・保存。DOM に依存しない (storage / env は引数で受ける)。
+// 設定のスキーマ・既定値・検証・保存。DOM に依存しない (storage は引数で受ける)。
 
 export const STORAGE_KEY = 'mzvc.settings.v1';
 // 既定値を変えたときに上げる。旧バージョンで保存された「旧既定値のまま」の項目だけ新既定値へ移行する
@@ -50,18 +50,16 @@ export const BOOLEANS = [
   { key: 'playing', label: '再生', def: true },
 ];
 
-export const PX_PER_MM_RANGE = { min: 2, max: 12 };
-
-// 画面の実寸 (CSS px / mm) の推定。キャリブレーションで上書きされる。
-export function guessPxPerMm(screenWidth, screenHeight) {
-  const shortSide = Math.min(screenWidth || 0, screenHeight || 0);
-  if (shortSide === 744) return 6.42; // iPad mini (163 ppi 相当)
-  if (shortSide >= 768) return 5.2; // 9.7 / 10.2 / 10.9 / 11 インチ (132 ppi 相当)
-  return 3.78; // 一般的な 96 ppi
+// 画面に合わせた縮尺: 画面の短辺にコースの 156mm が収まる (どの端末でも同じ見え方)。
+// 10.2 インチ iPad (短辺 810px) で 5.2 px/mm。大きさの微調整は「コーススケール」「コース幅」で行う。
+export const FIT_SHORT_MM = 156;
+export function fitPxPerMm(width, height) {
+  const shortSide = Math.min(width || 0, height || 0);
+  return shortSide > 0 ? shortSide / FIT_SHORT_MM : 5.2;
 }
 
-export function defaults(env = {}) {
-  const d = { version: SETTINGS_VERSION, pxPerMm: guessPxPerMm(env.screenWidth, env.screenHeight) };
+export function defaults() {
+  const d = { version: SETTINGS_VERSION };
   for (const s of SCHEMA) d[s.key] = s.def;
   for (const b of BOOLEANS) d[b.key] = b.def;
   for (const c of CHOICES) d[c.key] = c.def;
@@ -73,8 +71,8 @@ function clamp(v, lo, hi) {
 }
 
 // 任意のオブジェクトを検証し、不正な値は既定値に戻して返す。
-export function sanitize(raw, env = {}) {
-  const d = defaults(env);
+export function sanitize(raw) {
+  const d = defaults();
   const out = { ...d };
   if (!raw || typeof raw !== 'object') return out;
   for (const s of SCHEMA) {
@@ -92,20 +90,16 @@ export function sanitize(raw, env = {}) {
   for (const m of MIGRATIONS) {
     if (savedVersion < m.since && m.from.includes(raw[m.key])) out[m.key] = d[m.key];
   }
-  const p = raw.pxPerMm;
-  if (typeof p === 'number' && Number.isFinite(p)) {
-    out.pxPerMm = clamp(p, PX_PER_MM_RANGE.min, PX_PER_MM_RANGE.max);
-  }
   return out;
 }
 
-export function loadSettings(storage, env = {}) {
+export function loadSettings(storage) {
   try {
     const text = storage && storage.getItem(STORAGE_KEY);
-    if (!text) return defaults(env);
-    return sanitize(JSON.parse(text), env);
+    if (!text) return defaults();
+    return sanitize(JSON.parse(text));
   } catch {
-    return defaults(env);
+    return defaults();
   }
 }
 

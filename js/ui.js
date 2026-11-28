@@ -1,5 +1,5 @@
-// 設定パネル、再生/停止、UI の非表示と再表示、実寸キャリブレーション。
-import { SCHEMA, BOOLEANS, CHOICES, PX_PER_MM_RANGE } from './settings.js';
+// 設定パネル、再生/停止、UI の非表示と再表示。
+import { SCHEMA, BOOLEANS, CHOICES } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,7 +25,6 @@ export function createUI(settings, handlers) {
     <header><h1>設定</h1><button class="close" id="panelClose" aria-label="閉じる">✕</button></header>
     <div id="rows"></div>
     <div class="buttons">
-      <button id="btnCalib">実寸キャリブレーション (100mm)</button>
       <button id="btnHidePanel">UI を非表示 (画面の左右の端をタップで再表示)</button>
       <button id="btnReset" class="danger">設定をリセット</button>
     </div>
@@ -104,8 +103,6 @@ export function createUI(settings, handlers) {
       r.out.textContent = fmt(s, settings[s.key]);
     }
     syncPlay();
-    calibRange.value = String(settings.pxPerMm);
-    updateCalibLine();
   }
 
   // ---- 再生/停止 ----
@@ -134,7 +131,6 @@ export function createUI(settings, handlers) {
     for (const e of edges) e.hidden = !hidden;
     if (hidden) {
       openPanel(false);
-      endCalibration(false);
     }
   }
   $('btnHide').addEventListener('click', () => setUIHidden(true));
@@ -165,41 +161,6 @@ export function createUI(settings, handlers) {
     btnReset.classList.remove('armed');
     btnReset.textContent = '設定をリセット';
   }
-
-  // ---- 実寸キャリブレーション ----
-  const calibLine = $('calibLine');
-  const calibBar = $('calibBar');
-  const calibRange = $('calibRange');
-  calibRange.min = String(Math.max(PX_PER_MM_RANGE.min, 3));
-  calibRange.max = String(Math.min(PX_PER_MM_RANGE.max, 9));
-  function updateCalibLine() {
-    calibLine.style.width = `${100 * settings.pxPerMm}px`;
-  }
-  function setPxPerMm(v) {
-    const lo = PX_PER_MM_RANGE.min;
-    const hi = PX_PER_MM_RANGE.max;
-    settings.pxPerMm = Math.min(hi, Math.max(lo, v));
-    calibRange.value = String(settings.pxPerMm);
-    updateCalibLine();
-    handlers.onChange('pxPerMm');
-  }
-  function startCalibration() {
-    openPanel(false);
-    calibLine.hidden = false;
-    calibBar.hidden = false;
-    calibRange.value = String(settings.pxPerMm);
-    updateCalibLine();
-  }
-  function endCalibration(save = true) {
-    calibLine.hidden = true;
-    calibBar.hidden = true;
-    if (save) handlers.onSave();
-  }
-  $('btnCalib').addEventListener('click', startCalibration);
-  $('calibDone').addEventListener('click', () => endCalibration(true));
-  calibRange.addEventListener('input', () => setPxPerMm(Number(calibRange.value)));
-  $('calibMinus').addEventListener('click', () => setPxPerMm(settings.pxPerMm - 0.05));
-  $('calibPlus').addEventListener('click', () => setPxPerMm(settings.pxPerMm + 0.05));
 
   statusEl = $('status');
   syncAll();

@@ -1,5 +1,5 @@
 // エントリ: 設定の読み込み、描画ループ、リサイズ、可視性復帰、Wake Lock、Service Worker。
-import { loadSettings, saveSettings, defaults, sanitize } from './settings.js';
+import { loadSettings, saveSettings, defaults, sanitize, fitPxPerMm } from './settings.js';
 import { Track } from './track.js';
 import { Vehicle } from './vehicle.js';
 import { makeAllTextures } from './textures.js';
@@ -13,14 +13,13 @@ import { createUI } from './ui.js';
 const params = new URLSearchParams(location.search);
 const overview = params.has('overview'); // コース全体の俯瞰 (確認用)
 
-const env = { screenWidth: screen.width, screenHeight: screen.height };
 let storage = null;
 try {
   storage = window.localStorage;
 } catch {
   storage = null; // Cookie 無効などでアクセスできない場合
 }
-const settings = loadSettings(storage, env);
+const settings = loadSettings(storage);
 
 const canvas = document.getElementById('scene');
 let track = new Track(settings.course);
@@ -112,8 +111,8 @@ const ui = createUI(settings, {
     scheduleSave();
   },
   onReset() {
-    const d = defaults(env);
-    Object.assign(settings, d, { pxPerMm: settings.pxPerMm }); // 実寸の校正は残す
+    const d = defaults();
+    Object.assign(settings, d);
     if (track.course.id !== settings.course) applyCourse();
     autoScale = 1;
     saveAutoScale();
@@ -200,7 +199,7 @@ function frame(now) {
     // ジャンプ: 浮くと路面が遠のき (最大 9%)、着地の瞬間に少し沈んで戻る
     const jumpAmp = Math.min(1.5, Math.max(0, settings.jump));
     const bounce = vehicle.landT < 0.3 ? Math.sin((Math.PI * vehicle.landT) / 0.3) : 0;
-    cam.k = settings.pxPerMm * settings.courseScale * (1 - 0.09 * jumpAmp * vehicle.air + 0.03 * jumpAmp * bounce);
+    cam.k = fitPxPerMm(w, h) * settings.courseScale * (1 - 0.09 * jumpAmp * vehicle.air + 0.03 * jumpAmp * bounce);
     cam.ax = w * settings.carX;
     cam.ay = h * settings.carY;
   }
@@ -218,7 +217,7 @@ function frame(now) {
     }
     const lap = Math.floor(vehicle.progress / track.length) + 1;
     ui.setStatus(
-      `${fps.toFixed(0)} fps · ${indoor ? '屋内' : `${settings.autoTime ? timeOfDay.label : '時間帯手動'} · ${settings.autoWeather ? weather.label : '天候手動'}`} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${settings.pxPerMm.toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
+      `${fps.toFixed(0)} fps · ${indoor ? '屋内' : `${settings.autoTime ? timeOfDay.label : '時間帯手動'} · ${settings.autoWeather ? weather.label : '天候手動'}`} (濡れ ${live.wet.toFixed(2)}) · 周回 ${lap} · 速度 ${vehicle.speed.toFixed(0)} mm/s · ドリフト ${((vehicle.driftAngle * 180) / Math.PI).toFixed(0)}° · ${fitPxPerMm(w, h).toFixed(2)} px/mm · 解像度 ×${(settings.renderScale * (settings.autoRes ? autoScale : 1)).toFixed(2)}`,
     );
   }
 }
